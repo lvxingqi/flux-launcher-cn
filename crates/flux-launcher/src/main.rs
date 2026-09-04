@@ -77,9 +77,9 @@ use window_state::{
     launcher_window_geometry_with_prompt, launcher_window_geometry_with_sizes,
     monitor_preference_from_index, monitor_preference_index, parse_dimension_input,
     request_monitor_position, request_scroll, should_show_everything_install_prompt,
-    should_show_launcher, visual_preview_position,
+    should_show_launcher, visual_preview_position, WindowBootstrap,
 };
-use windui::app::{CursorVisibilityHandle, WindowOpHandle, WindowSizeHandle};
+use windui::app::WindowSizeHandle;
 use windui::core::Widget;
 use windui::event::{Key, KeyEvent};
 use windui::prelude::*;
@@ -970,23 +970,15 @@ fn main() {
     let mut sequence = 0_u64;
 
     let settings_at_start = settings_visible.get();
-    let initial_height = if settings_at_start {
-        SETTINGS_WINDOW_HEIGHT
-    } else if everything_prompt_visible_at_start {
-        EVERYTHING_PROMPT_WINDOW_HEIGHT
-    } else {
-        COMPACT_WINDOW_HEIGHT
-    };
-    let initial_width = if settings_at_start {
-        SETTINGS_WINDOW_WIDTH
-    } else if everything_prompt_visible_at_start {
-        EVERYTHING_PROMPT_WINDOW_WIDTH
-    } else {
-        launcher_width.get() as i32
-    };
     let window_icon = tray_icon();
-    let mut app =
-        App::new("Flux Launcher", initial_width, initial_height).icon_rgba(16, 16, &window_icon);
+    let window_bootstrap = WindowBootstrap::new(
+        settings_at_start,
+        everything_prompt_visible_at_start,
+        launcher_width.get() as i32,
+        initial_monitor_preference,
+        &window_icon,
+    );
+    let mut app = window_bootstrap.app;
     if everything_prompt_visible_at_start
         && std::env::var_os("FLUX_SMOKE_EVERYTHING_PROMPT").is_some()
     {
@@ -995,17 +987,12 @@ fn main() {
             "Everything install prompt style: glass-transparent panel_fill=none modal_scrim=none window_background=transparent"
         );
     }
-    if let Some((x, y)) =
-        monitor::centered_position(initial_monitor_preference, initial_width, initial_height)
-    {
-        app = app.position(x, y);
-    }
-    let window_size = app.window_size_handle();
-    let window_position = app.window_position_handle();
+    let window_size = window_bootstrap.window_size;
+    let window_position = window_bootstrap.window_position;
     let position_for_interval = window_position.clone();
     let settings_for_interval_geometry = Arc::clone(&shared_settings);
-    let window_op: WindowOpHandle = app.window_op_handle();
-    let cursor_visibility: CursorVisibilityHandle = app.cursor_visibility_handle();
+    let window_op = window_bootstrap.window_op;
+    let cursor_visibility = window_bootstrap.cursor_visibility;
     let update_status_for_channel = update_status;
     let update_available_for_channel = update_available;
     let update_install_progress_for_channel = update_install_progress;

@@ -9,8 +9,54 @@ use crate::{
 use flux_core::{MonitorPreference, Settings};
 #[cfg(test)]
 use flux_core::{DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH};
-use windui::app::{WindowPositionHandle, WindowSizeHandle};
+use windui::app::{
+    App, CursorVisibilityHandle, WindowOpHandle, WindowPositionHandle, WindowSizeHandle,
+};
 use windui::prelude::*;
+
+pub(crate) struct WindowBootstrap {
+    pub(crate) app: App,
+    pub(crate) window_size: WindowSizeHandle,
+    pub(crate) window_position: WindowPositionHandle,
+    pub(crate) window_op: WindowOpHandle,
+    pub(crate) cursor_visibility: CursorVisibilityHandle,
+}
+
+impl WindowBootstrap {
+    pub(crate) fn new(
+        settings_visible: bool,
+        prompt_visible: bool,
+        launcher_width: i32,
+        initial_monitor_preference: MonitorPreference,
+        window_icon: &[u8],
+    ) -> Self {
+        let (initial_width, initial_height) = launcher_window_geometry_with_prompt(
+            settings_visible,
+            prompt_visible,
+            false,
+            launcher_width,
+            0,
+        );
+        let mut app =
+            App::new("Flux Launcher", initial_width, initial_height).icon_rgba(16, 16, window_icon);
+        if let Some((x, y)) =
+            monitor::centered_position(initial_monitor_preference, initial_width, initial_height)
+        {
+            app = app.position(x, y);
+        }
+        let window_size = app.window_size_handle();
+        let window_position = app.window_position_handle();
+        let window_op = app.window_op_handle();
+        let cursor_visibility = app.cursor_visibility_handle();
+        Self {
+            app,
+            window_size,
+            window_position,
+            window_op,
+            cursor_visibility,
+        }
+    }
+}
 
 pub(crate) fn monitor_preference_index(preference: MonitorPreference) -> usize {
     match preference {
