@@ -2,16 +2,40 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 
 use crate::applications::{
     canonical_application_id, canonical_application_key, resolve_bare_executable_path,
 };
+use crate::plugins::PluginAction;
 use flux_core::{
     rank_results_with_priorities, PriorityEntry, ResultKind, ResultSource, SearchResult,
 };
 use windui::prelude::Signal;
 
 const MAX_VISIBLE_RESULTS: usize = 16;
+
+pub(crate) struct SearchRuntimeState {
+    pub(crate) results: Signal<Vec<SearchResult>>,
+    pub(crate) provider_results: Rc<RefCell<ProviderResults>>,
+    pub(crate) plugin_actions: Rc<RefCell<HashMap<String, PluginAction>>>,
+    pub(crate) icon_refresh_generation: Signal<u64>,
+    pub(crate) inline_completion: Signal<String>,
+}
+
+impl SearchRuntimeState {
+    pub(crate) fn new(initial_results: Vec<SearchResult>) -> Self {
+        Self {
+            results: windui::prelude::signal(initial_results),
+            provider_results: Rc::new(RefCell::new(ProviderResults::default())),
+            plugin_actions: Rc::new(RefCell::new(HashMap::new())),
+            icon_refresh_generation: windui::prelude::signal(
+                crate::icons::SHELL_ICON_COMPLETION_GENERATION.load(Ordering::Acquire),
+            ),
+            inline_completion: windui::prelude::signal(String::new()),
+        }
+    }
+}
 
 pub(crate) fn should_publish_initial_query_results(
     has_query: bool,

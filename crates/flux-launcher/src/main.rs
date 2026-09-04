@@ -32,7 +32,6 @@ mod visual_preview;
 mod window_state;
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
@@ -58,12 +57,11 @@ use i18n::{
     language_preference_from_index, language_preference_index,
 };
 use plugins::{
-    FlowPluginWorker, NativePluginQueryResponse, NativePluginWorker, PluginAction,
-    PluginQueryResponse,
+    FlowPluginWorker, NativePluginQueryResponse, NativePluginWorker, PluginQueryResponse,
 };
 use query::{
     commit_provider_results, normalize_built_in_executable_targets, refresh_merged_results,
-    should_publish_initial_query_results, ProviderResults,
+    should_publish_initial_query_results, SearchRuntimeState,
 };
 use result_row::{result_row, ActionRowAnchor};
 use settings_state::{
@@ -557,9 +555,12 @@ fn main() {
     let caret_duration = signal(settings.smooth_caret_duration_ms.to_string());
 
     let mut model = SearchModel::new();
-    let results = signal(model.results().to_vec());
-    let provider_results = Rc::new(RefCell::new(ProviderResults::default()));
-    let plugin_actions = Rc::new(RefCell::new(HashMap::<String, PluginAction>::new()));
+    let search_state = SearchRuntimeState::new(model.results().to_vec());
+    let results = search_state.results;
+    let provider_results = search_state.provider_results;
+    let plugin_actions = search_state.plugin_actions;
+    let icon_refresh_generation = search_state.icon_refresh_generation;
+    let inline_completion = search_state.inline_completion;
     let result_source = results;
     let selected_for_rows = selected_id;
     let selected_index_for_rows = selected_index;
@@ -575,10 +576,8 @@ fn main() {
     let launcher_width_for_rows = launcher_width;
     let query_for_rows = query;
     let scroll_request_for_rows = signal(false);
-    let icon_refresh_generation = signal(SHELL_ICON_COMPLETION_GENERATION.load(Ordering::Acquire));
     let settings_visible_for_rows = settings_visible;
     let window_size_slot_for_rows = Rc::clone(&action_window_slot);
-    let inline_completion = signal(String::new());
     let query_caret_position = signal(query.with(|text| text.chars().count()));
 
     let search_placeholder = i18n_hub.tr(|| t!("search.placeholder").into_owned());
