@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::{launch, native_host, visual_preview};
+use flux_core::Settings;
 
 #[cfg(windows)]
 use crate::icons::shortcut_icon_smoke;
@@ -23,6 +24,15 @@ pub(crate) fn is_shutdown_mode(mode: Option<&OsStr>) -> bool {
 
 pub(crate) fn is_startup_mode(mode: Option<&OsStr>) -> bool {
     mode == Some(OsStr::new("--startup"))
+}
+
+pub(crate) fn load_settings(mode: Option<&OsStr>) -> (Settings, bool) {
+    let settings = Settings::load_or_default();
+    crate::i18n::apply_configured_locale(settings.language);
+    if let Err(error) = crate::startup::set_enabled(settings.start_with_windows) {
+        eprintln!("Could not synchronize Windows startup setting: {error}");
+    }
+    (settings, is_startup_mode(mode))
 }
 
 pub(crate) fn run_special_mode(

@@ -445,13 +445,7 @@ fn main() {
     if entry::is_shutdown_mode(mode.as_deref()) {
         return;
     }
-    let startup_launch = entry::is_startup_mode(mode.as_deref());
-
-    let settings = Settings::load_or_default();
-    apply_configured_locale(settings.language);
-    if let Err(error) = startup::set_enabled(settings.start_with_windows) {
-        eprintln!("Could not synchronize Windows startup setting: {error}");
-    }
+    let (settings, startup_launch) = entry::load_settings(mode.as_deref());
     let activation_hotkey = hotkeys::activation_hotkey(&settings.activation_hotkey);
     let shared_settings = Arc::new(RwLock::new(settings.clone()));
     let query_history = Rc::new(RefCell::new(settings.query_history.clone()));

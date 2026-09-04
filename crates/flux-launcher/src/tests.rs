@@ -1,4 +1,3 @@
-
 use super::{
     dimension_from_slider, dimension_slider_fraction, display_title, format_update_progress,
     history_cursor_step, is_run_as_admin_key, launcher_window_geometry_with_sizes,
