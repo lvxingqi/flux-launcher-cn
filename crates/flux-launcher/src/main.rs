@@ -8,6 +8,7 @@ mod accent;
 mod actions;
 mod applications;
 mod builtin;
+mod entry;
 mod everything;
 mod fullscreen;
 mod hotkeys;
@@ -39,8 +40,7 @@ use std::time::Duration;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 
 use crate::icons::{
-    icon_completion_generation_changed, shortcut_icon_smoke, tray_icon,
-    SHELL_ICON_COMPLETION_GENERATION,
+    icon_completion_generation_changed, tray_icon, SHELL_ICON_COMPLETION_GENERATION,
 };
 use actions::{
     actions_for_result, copy_result_file, copy_result_path, execute_result_action, selected_result,
@@ -111,18 +111,6 @@ const SEARCH_INTERVAL: Duration = Duration::from_millis(40);
 const EVERYTHING_MIN_QUERY_LEN: usize = 1;
 const PLUGIN_MIN_QUERY_LEN: usize = 2;
 
-fn should_claim_single_instance(mode: Option<&std::ffi::OsStr>) -> bool {
-    !matches!(
-        mode,
-        Some(mode)
-            if mode == std::ffi::OsStr::new("--plugin-host")
-                || mode == std::ffi::OsStr::new("--folder-launch-smoke")
-                || mode == std::ffi::OsStr::new("--shortcut-icon-smoke")
-    )
-}
-fn is_shutdown_mode(mode: Option<&std::ffi::OsStr>) -> bool {
-    mode == Some(std::ffi::OsStr::new("--shutdown"))
-}
 fn is_run_as_admin_key(event: &KeyEvent) -> bool {
     event.ctrl
         && matches!(
@@ -438,65 +426,12 @@ fn main() {
     let mut args = std::env::args_os();
     let _executable = args.next();
     let mode = args.next();
-    if mode.as_deref() == Some(std::ffi::OsStr::new("--visual-preview")) {
-        let mut values = [0_i32; 4];
-        for value in &mut values {
-            let Some(raw) = args.next() else {
-                eprintln!("visual preview requires width height x y");
-                std::process::exit(2);
-            };
-            let Ok(parsed) = raw.to_string_lossy().parse::<i32>() else {
-                eprintln!("visual preview dimensions and position must be integers");
-                std::process::exit(2);
-            };
-            *value = parsed;
-        }
-        let locale = args
-            .next()
-            .map(|value| value.to_string_lossy().into_owned())
-            .unwrap_or_else(|| String::from("en"));
-        visual_preview::run(values[0], values[1], values[2], values[3], &locale);
-        return;
-    }
-    if mode.as_deref() == Some(std::ffi::OsStr::new("--plugin-host")) {
-        let root = args
-            .next()
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("FLUX_NATIVE_PLUGIN_DIR").map(std::path::PathBuf::from))
-            .unwrap_or_else(|| std::path::PathBuf::from("NativePlugins"));
-        let pipe_name = args
-            .next()
-            .map(|value| value.to_string_lossy().into_owned());
-        native_host::run(root, pipe_name);
-        return;
-    }
-    if mode.as_deref() == Some(std::ffi::OsStr::new("--folder-launch-smoke")) {
-        if let Some(target) = args.next() {
-            launch::open_path_async(&target.to_string_lossy());
-            std::thread::sleep(Duration::from_millis(900));
-        }
-        return;
-    }
-    if mode.as_deref() == Some(std::ffi::OsStr::new("--shortcut-icon-smoke")) {
-        #[cfg(windows)]
-        {
-            let Some(target) = args.next() else {
-                eprintln!("shortcut icon smoke requires a shortcut path");
-                std::process::exit(2);
-            };
-            if !shortcut_icon_smoke(&target.to_string_lossy()) {
-                eprintln!(
-                    "shortcut icon extraction failed for {}",
-                    target.to_string_lossy()
-                );
-                std::process::exit(1);
-            }
-        }
+    if entry::run_special_mode(mode.as_deref(), &mut args) {
         return;
     }
     let single_instance_disabled = std::env::var_os("FLUX_DISABLE_SINGLE_INSTANCE").is_some();
     if !single_instance_disabled
-        && should_claim_single_instance(mode.as_deref())
+        && entry::should_claim_single_instance(mode.as_deref())
         && matches!(
             windui::claim_instance(SINGLE_INSTANCE_ID),
             windui::InstanceRole::Handoff
@@ -507,10 +442,10 @@ fn main() {
     // The uninstaller uses this one-shot mode only to reach the already-running
     // instance through the single-instance listener. Never create a new UI if
     // there is no instance left to shut down.
-    if is_shutdown_mode(mode.as_deref()) {
+    if entry::is_shutdown_mode(mode.as_deref()) {
         return;
     }
-    let startup_launch = mode.as_deref() == Some(std::ffi::OsStr::new("--startup"));
+    let startup_launch = entry::is_startup_mode(mode.as_deref());
 
     let settings = Settings::load_or_default();
     apply_configured_locale(settings.language);
@@ -3803,15 +3738,15 @@ fn main() {
 mod tests {
     use super::{
         dimension_from_slider, dimension_slider_fraction, display_title, format_update_progress,
-        history_cursor_step, is_run_as_admin_key, is_shutdown_mode,
-        launcher_window_geometry_with_sizes, normalize_everything_query, parse_dimension_input,
-        relaunch_mode_for_auto_install, should_claim_single_instance,
+        history_cursor_step, is_run_as_admin_key, launcher_window_geometry_with_sizes,
+        normalize_everything_query, parse_dimension_input, relaunch_mode_for_auto_install,
         should_publish_initial_query_results, should_show_launcher, COMPACT_WINDOW_HEIGHT,
         LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT,
         MIN_LAUNCHER_WIDTH,
     };
     use crate::actions::{actions_for_result, quoted_result_path};
     use crate::applications::{canonical_application_id, resolve_bare_executable_path};
+    use crate::entry::{is_shutdown_mode, should_claim_single_instance};
     use crate::icons::{
         bundled_icon_rgba, google_icon_rgba, icon_completion_generation_changed,
         icon_target_for_path, is_executable_icon_target, obsidian_icon_rgba,
