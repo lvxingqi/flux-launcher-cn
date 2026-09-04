@@ -34,7 +34,7 @@ mod window_state;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{atomic::Ordering, Arc, RwLock};
+use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
 #[cfg(windows)]
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
@@ -55,7 +55,7 @@ use flux_core::{
 };
 use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
-    language_preference_from_index, language_preference_index, I18nHub,
+    language_preference_from_index, language_preference_index,
 };
 use plugins::{
     FlowPluginWorker, NativePluginQueryResponse, NativePluginWorker, PluginAction,
@@ -68,9 +68,8 @@ use query::{
 use result_row::{result_row, ActionRowAnchor};
 use settings_state::{
     move_priority_entry, record_query_history, remove_priority_entry, save_settings, set_game_mode,
-    set_result_priority,
+    set_result_priority, LauncherSettingsState,
 };
-use settings_view::SettingsUiState;
 use update_state::{
     format_update_progress, request_update_check, request_update_install, update_check_due,
     UpdateInstallResponse,
@@ -447,9 +446,10 @@ fn main() {
     }
     let (settings, startup_launch) = entry::load_settings(mode.as_deref());
     let activation_hotkey = hotkeys::activation_hotkey(&settings.activation_hotkey);
-    let shared_settings = Arc::new(RwLock::new(settings.clone()));
-    let query_history = Rc::new(RefCell::new(settings.query_history.clone()));
-    let priorities = signal(settings.priority_entries.clone());
+    let settings_state = LauncherSettingsState::from_settings(&settings);
+    let shared_settings = settings_state.shared_settings;
+    let query_history = settings_state.query_history;
+    let priorities = settings_state.priorities;
     let history_cursor = signal(None::<usize>);
     let history_mode = signal(false);
 
@@ -463,28 +463,19 @@ fn main() {
     let recycle_bin_confirmation = signal(false);
     let action_items = signal(Vec::<ActionItem>::new());
     let action_window_slot = Rc::new(RefCell::new(None::<WindowSizeHandle>));
-    let i18n_hub = I18nHub::new();
+    let i18n_hub = settings_state.i18n_hub;
     let status = i18n_hub.tr(|| t!("status.ready").into_owned());
     let update_status = i18n_hub.tr(|| t!("updater.checked_automatically").into_owned());
     let update_available = signal(None::<updater::StableUpdate>);
     let update_install_progress = signal(None::<(String, updater::DownloadProgress)>);
     let update_installing = signal(false);
     let current_sequence = signal(0_u64);
-    let game_mode = signal(settings.game_mode);
-    let game_mode_status = signal(game_mode_label(settings.game_mode));
-    let settings_ui = SettingsUiState::new(
-        signal(std::env::var_os("FLUX_OPEN_SETTINGS").is_some()),
-        signal(
-            std::env::var("FLUX_SMOKE_SETTINGS_TAB")
-                .ok()
-                .and_then(|value| value.parse::<usize>().ok())
-                .filter(|tab| *tab < 4)
-                .unwrap_or(0),
-        ),
-    );
+    let game_mode = settings_state.game_mode;
+    let game_mode_status = settings_state.game_mode_status;
+    let settings_ui = settings_state.settings_ui;
     let settings_visible = settings_ui.visible;
     let settings_tab = settings_ui.tab;
-    let language_preference = signal(language_preference_index(settings.language));
+    let language_preference = settings_state.language_preference;
     let tray_settings_smoke_pending = Rc::new(Cell::new(
         std::env::var_os("FLUX_SMOKE_TRAY_SETTINGS").is_some(),
     ));

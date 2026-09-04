@@ -5,6 +5,47 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use flux_core::{PriorityEntry, ResultKind, SearchResult, Settings};
 use windui::prelude::Signal;
 
+use crate::i18n::I18nHub;
+use crate::settings_view::SettingsUiState;
+
+pub(crate) struct LauncherSettingsState {
+    pub(crate) shared_settings: Arc<RwLock<Settings>>,
+    pub(crate) query_history: Rc<RefCell<Vec<String>>>,
+    pub(crate) priorities: Signal<Vec<PriorityEntry>>,
+    pub(crate) i18n_hub: I18nHub,
+    pub(crate) game_mode: Signal<bool>,
+    pub(crate) game_mode_status: Signal<String>,
+    pub(crate) settings_ui: SettingsUiState,
+    pub(crate) language_preference: Signal<usize>,
+}
+
+impl LauncherSettingsState {
+    pub(crate) fn from_settings(settings: &Settings) -> Self {
+        let settings_ui = SettingsUiState::new(
+            windui::prelude::signal(std::env::var_os("FLUX_OPEN_SETTINGS").is_some()),
+            windui::prelude::signal(
+                std::env::var("FLUX_SMOKE_SETTINGS_TAB")
+                    .ok()
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .filter(|tab| *tab < 4)
+                    .unwrap_or(0),
+            ),
+        );
+        Self {
+            shared_settings: Arc::new(RwLock::new(settings.clone())),
+            query_history: Rc::new(RefCell::new(settings.query_history.clone())),
+            priorities: windui::prelude::signal(settings.priority_entries.clone()),
+            i18n_hub: I18nHub::new(),
+            game_mode: windui::prelude::signal(settings.game_mode),
+            game_mode_status: windui::prelude::signal(crate::game_mode_label(settings.game_mode)),
+            settings_ui,
+            language_preference: windui::prelude::signal(crate::i18n::language_preference_index(
+                settings.language,
+            )),
+        }
+    }
+}
+
 static SETTINGS_SAVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 pub(crate) fn settings_save_lock() -> &'static Mutex<()> {
