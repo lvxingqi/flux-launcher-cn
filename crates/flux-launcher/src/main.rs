@@ -70,7 +70,7 @@ use settings_state::{
 };
 use update_state::{
     format_update_progress, request_update_check, request_update_install, update_check_due,
-    UpdateInstallResponse,
+    UpdateInstallResponse, UpdateRuntimeState,
 };
 use window_state::{
     apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
@@ -997,7 +997,8 @@ fn main() {
     let update_available_for_channel = update_available;
     let update_install_progress_for_channel = update_install_progress;
     let update_installing_for_channel = update_installing;
-    let update_install_in_flight = Rc::new(Cell::new(false));
+    let update_runtime = UpdateRuntimeState::new();
+    let update_install_in_flight = update_runtime.install_in_flight;
     let update_install_in_flight_for_channel = Rc::clone(&update_install_in_flight);
     let update_install_sender =
         app.channel::<UpdateInstallResponse>(move |ctx, response| match response {
@@ -1026,7 +1027,7 @@ fn main() {
         });
     let update_install_sender_for_channel = update_install_sender.clone();
     let settings_for_update_channel = Arc::clone(&shared_settings);
-    let update_check_in_flight = Rc::new(Cell::new(false));
+    let update_check_in_flight = update_runtime.check_in_flight;
     let update_check_in_flight_for_channel = Rc::clone(&update_check_in_flight);
     let update_install_in_flight_for_check_channel = Rc::clone(&update_install_in_flight);
     let update_sender = app.channel::<updater::UpdateCheckResponse>(move |ctx, response| {

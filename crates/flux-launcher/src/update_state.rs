@@ -1,7 +1,22 @@
 use std::cell::Cell;
+use std::rc::Rc;
 
 use flux_core::Settings;
 use windui::prelude::Sender;
+
+pub(crate) struct UpdateRuntimeState {
+    pub(crate) install_in_flight: Rc<Cell<bool>>,
+    pub(crate) check_in_flight: Rc<Cell<bool>>,
+}
+
+impl UpdateRuntimeState {
+    pub(crate) fn new() -> Self {
+        Self {
+            install_in_flight: Rc::new(Cell::new(false)),
+            check_in_flight: Rc::new(Cell::new(false)),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) enum UpdateInstallResponse {
