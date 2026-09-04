@@ -21,6 +21,7 @@ mod native_host;
 mod plugin_limits;
 mod plugin_transport;
 mod plugins;
+mod provider_state;
 mod query;
 mod result_row;
 mod settings_state;
@@ -45,8 +46,8 @@ use actions::{
     actions_for_result, copy_result_file, copy_result_path, execute_result_action, selected_result,
     ActionItem, ActionKind,
 };
-use applications::{ApplicationResponse, ApplicationWorker};
-use everything::{EverythingResponse, EverythingWorker, InstallationState};
+use applications::ApplicationResponse;
+use everything::{EverythingResponse, InstallationState};
 use flux_core::{
     history_results, should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind,
     SearchModel, SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH,
@@ -56,9 +57,8 @@ use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
     language_preference_from_index, language_preference_index,
 };
-use plugins::{
-    FlowPluginWorker, NativePluginQueryResponse, NativePluginWorker, PluginQueryResponse,
-};
+use plugins::{NativePluginQueryResponse, PluginQueryResponse};
+use provider_state::ProviderWorkers;
 use query::{
     commit_provider_results, normalize_built_in_executable_targets, refresh_merged_results,
     should_publish_initial_query_results, SearchRuntimeState,
@@ -1140,8 +1140,6 @@ fn main() {
         }
         status_for_applications.set(response.status);
     });
-    let application_worker = ApplicationWorker::spawn(application_sender);
-
     let query_for_everything = query;
     let results_for_everything = results;
     let inline_completion_for_everything = inline_completion;
@@ -1198,7 +1196,6 @@ fn main() {
         }
         status_for_everything.set(response.status);
     });
-    let everything_worker = EverythingWorker::spawn(everything_sender);
     if settings.auto_enable_everything {
         match everything::start_background_if_installed() {
             Ok(InstallationState::Installed(_)) => {
@@ -1261,8 +1258,6 @@ fn main() {
         }
         status_for_plugins.set(response.status);
     });
-    let plugin_worker = FlowPluginWorker::spawn(plugin_sender);
-
     let query_for_native_plugins = query;
     let results_for_native_plugins = results;
     let inline_completion_for_native_plugins = inline_completion;
@@ -1312,7 +1307,16 @@ fn main() {
             );
         }
     });
-    let native_plugin_worker = NativePluginWorker::spawn(native_sender);
+    let provider_workers = ProviderWorkers::new(
+        application_sender,
+        everything_sender,
+        plugin_sender,
+        native_sender,
+    );
+    let application_worker = provider_workers.applications;
+    let everything_worker = provider_workers.everything;
+    let plugin_worker = provider_workers.plugins;
+    let native_plugin_worker = provider_workers.native_plugins;
 
     let settings_for_activation = Arc::clone(&shared_settings);
     let position_for_activation = window_position.clone();
