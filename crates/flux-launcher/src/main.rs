@@ -69,8 +69,8 @@ use settings_state::{
     set_result_priority, LauncherSettingsState,
 };
 use update_state::{
-    format_update_progress, request_update_check, request_update_install, update_check_due,
-    UpdateInstallResponse, UpdateRuntimeState,
+    apply_install_response, request_update_check, request_update_install, update_check_due,
+    UpdateInstallResponse, UpdateInstallUiAction, UpdateRuntimeState,
 };
 use window_state::{
     apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
@@ -987,31 +987,22 @@ fn main() {
     let update_runtime = UpdateRuntimeState::new();
     let update_install_in_flight = update_runtime.install_in_flight;
     let update_install_in_flight_for_channel = Rc::clone(&update_install_in_flight);
-    let update_install_sender =
-        app.channel::<UpdateInstallResponse>(move |ctx, response| match response {
-            UpdateInstallResponse::Progress { version, progress } => {
-                update_install_progress_for_channel.set(Some((version.clone(), progress.clone())));
-                update_status_for_channel.set(format_update_progress(&version, &progress));
-            }
-            UpdateInstallResponse::Started { version } => {
-                update_install_in_flight_for_channel.set(false);
-                update_installing_for_channel.set(false);
-                update_install_progress_for_channel.set(None);
-                update_status_for_channel
-                    .set(t!("updater.installing_restarting", version = version).into_owned());
-                ctx.toast_ok(t!("updater.installing", version = version).into_owned());
+    let update_install_sender = app.channel::<UpdateInstallResponse>(move |ctx, response| {
+        match apply_install_response(
+            response,
+            &update_install_in_flight_for_channel,
+            update_installing_for_channel,
+            update_install_progress_for_channel,
+            update_status_for_channel,
+        ) {
+            UpdateInstallUiAction::None => {}
+            UpdateInstallUiAction::Toast(message) => ctx.toast_ok(message),
+            UpdateInstallUiAction::ToastAndQuit(message) => {
+                ctx.toast_ok(message);
                 ctx.quit();
             }
-            UpdateInstallResponse::Failed { version, error } => {
-                update_install_in_flight_for_channel.set(false);
-                update_installing_for_channel.set(false);
-                update_install_progress_for_channel.set(None);
-                update_status_for_channel.set(
-                    t!("updater.install_failed", version = version, error = error).into_owned(),
-                );
-                ctx.toast_ok(t!("updater.install_failed_toast", error = error).into_owned());
-            }
-        });
+        }
+    });
     let update_install_sender_for_channel = update_install_sender.clone();
     let settings_for_update_channel = Arc::clone(&shared_settings);
     let update_check_in_flight = update_runtime.check_in_flight;

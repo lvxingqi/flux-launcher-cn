@@ -1,10 +1,9 @@
 use super::{
-    dimension_from_slider, dimension_slider_fraction, display_title, format_update_progress,
-    history_cursor_step, is_run_as_admin_key, launcher_window_geometry_with_sizes,
-    normalize_everything_query, parse_dimension_input, relaunch_mode_for_auto_install,
-    should_publish_initial_query_results, should_show_launcher, COMPACT_WINDOW_HEIGHT,
-    LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT,
-    MIN_LAUNCHER_WIDTH,
+    dimension_from_slider, dimension_slider_fraction, display_title, history_cursor_step,
+    is_run_as_admin_key, launcher_window_geometry_with_sizes, normalize_everything_query,
+    parse_dimension_input, relaunch_mode_for_auto_install, should_publish_initial_query_results,
+    should_show_launcher, COMPACT_WINDOW_HEIGHT, LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT,
+    MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use crate::actions::{actions_for_result, quoted_result_path};
 use crate::applications::{canonical_application_id, resolve_bare_executable_path};
@@ -19,7 +18,7 @@ use crate::query::{
     preserve_everything_file_order, ProviderResults,
 };
 use crate::result_row::hover_position_changed;
-use crate::update_state::format_bytes;
+use crate::update_state::{format_bytes, format_update_progress};
 use crate::window_state::{launcher_window_geometry, should_show_everything_install_prompt};
 use flux_core::{rank_results_with_priorities, ResultKind, ResultSource, SearchResult};
 use windui::event::{Key, KeyEvent};

@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use flux_core::Settings;
-use windui::prelude::Sender;
+use windui::prelude::{Sender, Signal};
 
 pub(crate) struct UpdateRuntimeState {
     pub(crate) install_in_flight: Rc<Cell<bool>>,
@@ -31,6 +31,49 @@ pub(crate) enum UpdateInstallResponse {
         version: String,
         error: String,
     },
+}
+
+pub(crate) enum UpdateInstallUiAction {
+    None,
+    Toast(String),
+    ToastAndQuit(String),
+}
+
+pub(crate) fn apply_install_response(
+    response: UpdateInstallResponse,
+    install_in_flight: &Cell<bool>,
+    installing: Signal<bool>,
+    progress: Signal<Option<(String, crate::updater::DownloadProgress)>>,
+    status: Signal<String>,
+) -> UpdateInstallUiAction {
+    match response {
+        UpdateInstallResponse::Progress {
+            version,
+            progress: value,
+        } => {
+            progress.set(Some((version.clone(), value.clone())));
+            status.set(format_update_progress(&version, &value));
+            UpdateInstallUiAction::None
+        }
+        UpdateInstallResponse::Started { version } => {
+            install_in_flight.set(false);
+            installing.set(false);
+            progress.set(None);
+            status.set(t!("updater.installing_restarting", version = version).into_owned());
+            UpdateInstallUiAction::ToastAndQuit(
+                t!("updater.installing", version = version).into_owned(),
+            )
+        }
+        UpdateInstallResponse::Failed { version, error } => {
+            install_in_flight.set(false);
+            installing.set(false);
+            progress.set(None);
+            status.set(t!("updater.install_failed", version = version, error = error).into_owned());
+            UpdateInstallUiAction::Toast(
+                t!("updater.install_failed_toast", error = error).into_owned(),
+            )
+        }
+    }
 }
 
 pub(crate) fn request_update_check(
