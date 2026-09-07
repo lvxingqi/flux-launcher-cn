@@ -20,7 +20,7 @@ use crate::query::{
 };
 use crate::result_row::hover_position_changed;
 use crate::update_state::format_bytes;
-use crate::window_state::launcher_window_geometry;
+use crate::window_state::{launcher_window_geometry, should_show_everything_install_prompt};
 use flux_core::{rank_results_with_priorities, ResultKind, ResultSource, SearchResult};
 use windui::event::{Key, KeyEvent};
 
@@ -719,19 +719,19 @@ fn missing_everything_prompt_does_not_override_normal_launcher_geometry() {
 
 #[test]
 fn everything_prompt_requires_missing_auto_enabled_and_unseen_state() {
-    assert!(super::should_show_everything_install_prompt(
+    assert!(should_show_everything_install_prompt(
         false, true, false, false
     ));
-    assert!(!super::should_show_everything_install_prompt(
+    assert!(!should_show_everything_install_prompt(
         true, true, false, false
     ));
-    assert!(!super::should_show_everything_install_prompt(
+    assert!(!should_show_everything_install_prompt(
         false, false, false, false
     ));
-    assert!(!super::should_show_everything_install_prompt(
+    assert!(!should_show_everything_install_prompt(
         false, true, true, false
     ));
-    assert!(!super::should_show_everything_install_prompt(
+    assert!(!should_show_everything_install_prompt(
         false, true, false, true
     ));
 }

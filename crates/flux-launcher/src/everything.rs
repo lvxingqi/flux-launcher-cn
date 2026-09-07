@@ -14,14 +14,51 @@ use std::thread;
 use std::time::Duration;
 
 use everything_ipc::wm::{EverythingClient, RequestFlags, Sort};
+use flux_core::Settings;
 use flux_core::{ResultKind, SearchResult};
 
 use crate::applications::canonical_application_id;
-use windui::prelude::Sender;
+use windui::prelude::{signal, Sender, Signal};
 
 const MAX_RESULTS: u32 = 16;
 const QUERY_TIMEOUT: Duration = Duration::from_millis(350);
 pub const WINGET_PACKAGE_ID: &str = "voidtools.Everything";
+
+pub(crate) struct EverythingRuntimeState {
+    pub(crate) installed: Signal<bool>,
+    pub(crate) prompt_visible_at_start: bool,
+    pub(crate) prompt_visible: Signal<bool>,
+    pub(crate) status: Signal<String>,
+}
+
+impl EverythingRuntimeState {
+    pub(crate) fn new(settings: &Settings) -> Self {
+        let installation = installation_state();
+        let installed_at_start = installation.is_installed();
+        let prompt_disabled = std::env::var("FLUX_DISABLE_EVERYTHING_PROMPT")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let prompt_visible_at_start = crate::window_state::should_show_everything_install_prompt(
+            installed_at_start,
+            settings.auto_enable_everything,
+            settings.everything_install_prompt_seen,
+            prompt_disabled,
+        );
+        let installed = signal(installed_at_start);
+        let status = signal(if installed_at_start {
+            t!("everything.detected_enable_ipc").into_owned()
+        } else {
+            t!("everything.not_installed_winget").into_owned()
+        });
+        Self {
+            installed,
+            prompt_visible_at_start,
+            prompt_visible: signal(prompt_visible_at_start),
+            status,
+        }
+    }
+}
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;

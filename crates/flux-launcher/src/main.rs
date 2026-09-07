@@ -47,7 +47,7 @@ use actions::{
     ActionItem, ActionKind,
 };
 use applications::ApplicationResponse;
-use everything::{EverythingResponse, InstallationState};
+use everything::{EverythingResponse, EverythingRuntimeState, InstallationState};
 use flux_core::{
     history_results, should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind,
     SearchModel, SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH,
@@ -76,8 +76,8 @@ use window_state::{
     apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
     launcher_window_geometry_with_prompt, launcher_window_geometry_with_sizes,
     monitor_preference_from_index, monitor_preference_index, parse_dimension_input,
-    request_monitor_position, request_scroll, should_show_everything_install_prompt,
-    should_show_launcher, visual_preview_position, WindowBootstrap,
+    request_monitor_position, request_scroll, should_show_launcher, visual_preview_position,
+    WindowBootstrap,
 };
 use windui::app::WindowSizeHandle;
 use windui::core::Widget;
@@ -533,24 +533,11 @@ fn main() {
         })
         .unwrap_or(settings.monitor_preference);
     let monitor_preference = signal(monitor_preference_index(initial_monitor_preference));
-    let initial_everything_state = everything::installation_state();
-    let everything_installed = signal(initial_everything_state.is_installed());
-    let everything_prompt_disabled = std::env::var("FLUX_DISABLE_EVERYTHING_PROMPT")
-        .ok()
-        .as_deref()
-        == Some("1");
-    let everything_prompt_visible_at_start = should_show_everything_install_prompt(
-        initial_everything_state.is_installed(),
-        settings.auto_enable_everything,
-        settings.everything_install_prompt_seen,
-        everything_prompt_disabled,
-    );
-    let everything_prompt_visible = signal(everything_prompt_visible_at_start);
-    let everything_status = signal(if everything_installed.get() {
-        t!("everything.detected_enable_ipc").into_owned()
-    } else {
-        t!("everything.not_installed_winget").into_owned()
-    });
+    let everything_state = EverythingRuntimeState::new(&settings);
+    let everything_installed = everything_state.installed;
+    let everything_prompt_visible_at_start = everything_state.prompt_visible_at_start;
+    let everything_prompt_visible = everything_state.prompt_visible;
+    let everything_status = everything_state.status;
     let selection_color = signal(selection_color_for_settings(&settings));
     let caret_duration = signal(settings.smooth_caret_duration_ms.to_string());
 
