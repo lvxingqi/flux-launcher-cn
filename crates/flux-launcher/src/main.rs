@@ -46,7 +46,7 @@ use crate::icons::{
 };
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
-use actions::{copy_result_file, copy_result_path, selected_result, ActionItem};
+use actions::{selected_result, ActionItem};
 use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
     should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
@@ -60,8 +60,9 @@ use i18n::{
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
-    cycle_query_history, handle_action_entry, handle_action_mode, handle_enter_key,
-    handle_result_navigation, open_history_mode, ActionKeyContext, EnterKeyContext,
+    cycle_query_history, handle_action_entry, handle_action_mode, handle_copy_shortcut,
+    handle_enter_key, handle_result_navigation, open_history_mode, ActionKeyContext,
+    EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
@@ -1083,22 +1084,14 @@ fn main() {
                 Key::Other(0x43) | Key::Char('c') | Key::Char('C')
             )
         {
-            eprintln!(
-                "Ctrl+Shift+C dispatch: event_shift={} physical_shift={}",
+            return handle_copy_shortcut(
+                true,
                 event.shift,
-                shift_key_is_down()
-            );
-            if let Some(result) = selected_result(
+                shift_key_is_down(),
                 &results_for_keys.get(),
-                &selected_id_for_keys.get(),
-                selected_index_for_keys.get(),
-            ) {
-                eprintln!("Ctrl+Shift+C target={:?}", result.target);
-                if copy_result_file(&result) {
-                    return true;
-                }
-            }
-            return false;
+                selected_id_for_keys,
+                selected_index_for_keys,
+            );
         }
         if event.ctrl
             && !event.shift
@@ -1108,16 +1101,14 @@ fn main() {
                 Key::Other(0x43) | Key::Char('c') | Key::Char('C')
             )
         {
-            if let Some(result) = selected_result(
+            return handle_copy_shortcut(
+                false,
+                event.shift,
+                shift_key_is_down(),
                 &results_for_keys.get(),
-                &selected_id_for_keys.get(),
-                selected_index_for_keys.get(),
-            ) {
-                if copy_result_path(&result) {
-                    return true;
-                }
-            }
-            return false;
+                selected_id_for_keys,
+                selected_index_for_keys,
+            );
         }
         if event.ctrl && matches!(event.key, Key::Char('h') | Key::Char('H')) {
             let history = query_history_for_keys.borrow();

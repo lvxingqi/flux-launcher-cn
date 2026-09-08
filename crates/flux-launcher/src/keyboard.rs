@@ -4,7 +4,8 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use crate::actions::{
-    actions_for_result, execute_result_action, selected_result, ActionItem, ActionKind,
+    actions_for_result, copy_result_file, copy_result_path, execute_result_action, selected_result,
+    ActionItem, ActionKind,
 };
 use crate::launch;
 use crate::plugins;
@@ -152,6 +153,38 @@ pub(crate) fn handle_result_navigation(
     }
     scroll_pending.set(true);
     true
+}
+
+pub(crate) fn handle_copy_shortcut(
+    copy_file: bool,
+    event_shift: bool,
+    physical_shift: bool,
+    current_results: &[SearchResult],
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+) -> bool {
+    if copy_file {
+        eprintln!(
+            "Ctrl+Shift+C dispatch: event_shift={event_shift} physical_shift={physical_shift}"
+        );
+        if let Some(result) =
+            selected_result(current_results, &selected_id.get(), selected_index.get())
+        {
+            eprintln!("Ctrl+Shift+C target={:?}", result.target);
+            if copy_result_file(&result) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if let Some(result) = selected_result(current_results, &selected_id.get(), selected_index.get())
+    {
+        if copy_result_path(&result) {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn handle_action_entry(
