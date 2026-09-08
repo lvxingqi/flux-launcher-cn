@@ -190,6 +190,15 @@ pub(crate) fn priority_row(
         )
 }
 
+pub(crate) fn priorities_empty(priorities: Signal<Vec<PriorityEntry>>) -> Element {
+    Element::label(t!("priorities.empty"))
+        .font_size(12.0)
+        .fg(Color::rgba(235, 241, 255, 185))
+        .max_lines(2)
+        .truncate(Truncate::End)
+        .visible_when(move || priorities.get().is_empty())
+}
+
 pub(crate) fn action_row(
     item: &ActionItem,
     item_index: usize,

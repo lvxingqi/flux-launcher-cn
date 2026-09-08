@@ -67,7 +67,8 @@ use settings_state::{
     record_query_history, save_settings, set_game_mode, set_result_priority, LauncherSettingsState,
 };
 use ui_helpers::{
-    action_bar_content, action_row, priority_row, selection_color_hex, selection_palette,
+    action_bar_content, action_row, priorities_empty, priority_row, selection_color_hex,
+    selection_palette,
 };
 use update_state::{
     register_update_channels, request_update_check, request_update_install, update_check_due,
@@ -1746,12 +1747,7 @@ fn main() {
             )
         },
     );
-    let priorities_empty = Element::label(t!("priorities.empty"))
-        .font_size(12.0)
-        .fg(Color::rgba(235, 241, 255, 185))
-        .max_lines(2)
-        .truncate(Truncate::End)
-        .visible_when(move || priorities.get().is_empty());
+    let priorities_empty = priorities_empty(priorities);
 
     let visual_preview_generation_for_width_reset = visual_preview_generation;
     let visual_preview_generation_for_height_reset = visual_preview_generation;
