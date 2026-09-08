@@ -61,7 +61,10 @@ use i18n::{
 };
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
-use keyboard::{cycle_query_history, handle_action_mode, open_history_mode, ActionKeyContext};
+use keyboard::{
+    cycle_query_history, handle_action_mode, handle_result_navigation, open_history_mode,
+    ActionKeyContext,
+};
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
     normalize_built_in_executable_targets, should_publish_initial_query_results, SearchRuntimeState,
@@ -1279,26 +1282,14 @@ fn main() {
             return true;
         }
         match event.key {
-            Key::Up | Key::Down => {
-                let count = current_results.len();
-                let next = match event.key {
-                    Key::Up => selected_index_for_keys
-                        .get()
-                        .checked_sub(1)
-                        .unwrap_or(count - 1),
-                    Key::Down => (selected_index_for_keys.get() + 1) % count,
-                    _ => 0,
-                };
-                selection_touched_for_keys.set(true);
-                selected_index_for_keys.set(next);
-                if let Some(result) = current_results.get(next) {
-                    selected_id_for_keys.set(result.id.clone());
-                }
-                // Preserve the current row geometry so scroll_into_view can
-                // move the viewport after the selected result changes.
-                request_scroll(scroll_request_for_keys);
-                true
-            }
+            Key::Up | Key::Down => handle_result_navigation(
+                event.key,
+                &current_results,
+                selected_id_for_keys,
+                selected_index_for_keys,
+                selection_touched_for_keys,
+                scroll_request_for_keys,
+            ),
             Key::Right => {
                 if query_caret_position_for_keys.get() != query_for_keys.get().chars().count() {
                     return false;

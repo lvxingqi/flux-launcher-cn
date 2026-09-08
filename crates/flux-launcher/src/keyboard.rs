@@ -122,6 +122,32 @@ pub(crate) fn handle_action_mode(key: Key, context: &ActionKeyContext) -> bool {
     true
 }
 
+pub(crate) fn handle_result_navigation(
+    key: Key,
+    current_results: &[SearchResult],
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    selection_touched: Signal<bool>,
+    scroll_pending: Signal<bool>,
+) -> bool {
+    let count = current_results.len();
+    if count == 0 || !matches!(key, Key::Up | Key::Down) {
+        return false;
+    }
+    let next = match key {
+        Key::Up => selected_index.get().checked_sub(1).unwrap_or(count - 1),
+        Key::Down => (selected_index.get() + 1) % count,
+        _ => return false,
+    };
+    selection_touched.set(true);
+    selected_index.set(next);
+    if let Some(result) = current_results.get(next) {
+        selected_id.set(result.id.clone());
+    }
+    scroll_pending.set(true);
+    true
+}
+
 pub(crate) fn history_cursor_step(
     history_len: usize,
     cursor: Option<usize>,
