@@ -61,8 +61,8 @@ use i18n::{
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
     cycle_query_history, handle_action_entry, handle_action_mode, handle_copy_shortcut,
-    handle_enter_key, handle_result_navigation, open_history_mode, ActionKeyContext,
-    EnterKeyContext,
+    handle_enter_key, handle_open_location_shortcut, handle_result_navigation, open_history_mode,
+    ActionKeyContext, EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
@@ -1196,32 +1196,15 @@ fn main() {
         }
 
         if event.key == Key::Enter && alt_key_is_down() {
-            if history_mode_for_keys.get() {
-                if let Some(result) = selected_result(
-                    &current_results,
-                    &selected_id_for_keys.get(),
-                    selected_index_for_keys.get(),
-                ) {
-                    query_for_keys.set(result.title.clone());
-                    history_mode_for_keys.set(false);
-                }
-                return true;
-            }
-            record_query_history(
-                &settings_for_history_for_keys,
+            return handle_open_location_shortcut(
+                history_mode_for_keys,
+                query_for_keys,
                 &query_history_for_keys,
-                &query,
-            );
-            if let Some(result) = selected_result(
+                &settings_for_history_for_keys,
                 &current_results,
-                &selected_id_for_keys.get(),
-                selected_index_for_keys.get(),
-            ) {
-                if let Some(target) = result.target.as_deref() {
-                    let _ = launch::open_file_location(target);
-                }
-            }
-            return true;
+                selected_id_for_keys,
+                selected_index_for_keys,
+            );
         }
 
         if action_mode_for_keys.get() {

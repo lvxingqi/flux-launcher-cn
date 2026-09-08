@@ -187,6 +187,35 @@ pub(crate) fn handle_copy_shortcut(
     false
 }
 
+pub(crate) fn handle_open_location_shortcut(
+    history_mode: Signal<bool>,
+    query: Signal<String>,
+    query_history: &Rc<RefCell<Vec<String>>>,
+    settings: &Arc<RwLock<Settings>>,
+    current_results: &[SearchResult],
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+) -> bool {
+    if history_mode.get() {
+        if let Some(result) =
+            selected_result(current_results, &selected_id.get(), selected_index.get())
+        {
+            query.set(result.title.clone());
+            history_mode.set(false);
+        }
+        return true;
+    }
+
+    record_query_history(settings, query_history, &query.get());
+    if let Some(result) = selected_result(current_results, &selected_id.get(), selected_index.get())
+    {
+        if let Some(target) = result.target.as_deref() {
+            let _ = launch::open_file_location(target);
+        }
+    }
+    true
+}
+
 pub(crate) fn handle_action_entry(
     query: Signal<String>,
     query_caret_position: Signal<usize>,
