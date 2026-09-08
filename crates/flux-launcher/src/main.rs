@@ -14,6 +14,7 @@ mod fullscreen;
 mod hotkeys;
 mod i18n;
 mod icons;
+mod interval_state;
 mod keyboard;
 mod keyboard_layout;
 mod launch;
@@ -57,6 +58,7 @@ use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
     language_preference_from_index, language_preference_index,
 };
+use interval_state::dispatch_query;
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
@@ -65,9 +67,9 @@ use keyboard::{
     handle_run_as_admin_shortcut, open_history_mode, ActionKeyContext, EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
-use query::{
-    normalize_built_in_executable_targets, should_publish_initial_query_results, SearchRuntimeState,
-};
+#[cfg(test)]
+pub(crate) use query::should_publish_initial_query_results;
+use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
 use ui_helpers::{
@@ -2933,73 +2935,35 @@ fn main() {
                 launcher_height.get() as i32,
             );
             size_for_interval.set(target_width, target_height);
-            sequence = sequence.wrapping_add(1);
+            dispatch_query(
+                &mut model,
+                &mut sequence,
+                &next_query,
+                has_query,
+                auto_enable_everything_for_interval,
+                obsidian_enabled_for_interval,
+                obsidian_alias_for_interval,
+                google_enabled_for_interval,
+                google_alias_for_interval,
+                results_for_interval,
+                Rc::clone(&providers_for_interval),
+                selected_id,
+                selected_index,
+                selection_touched_for_interval,
+                inline_completion_for_interval,
+                scroll_request_for_interval,
+                action_mode,
+                action_index,
+                action_items,
+                Rc::clone(&actions_for_interval),
+                status_for_interval,
+                i18n_hub.tr(|| t!("status.ready").into_owned()),
+                &application_worker,
+                &everything_worker,
+                &plugin_worker,
+                &native_plugin_worker,
+            );
             sequence_for_interval.set(sequence);
-            model.set_query(&next_query);
-            {
-                let mut built_in_results = model.results().to_vec();
-                normalize_built_in_executable_targets(&mut built_in_results);
-                let everything_expected = auto_enable_everything_for_interval.get()
-                    && next_query.trim().len() >= EVERYTHING_MIN_QUERY_LEN;
-                let mut providers = providers_for_interval.borrow_mut();
-                providers.reset(sequence, built_in_results.clone(), everything_expected);
-                let publish_initial_results = should_publish_initial_query_results(
-                    has_query,
-                    built_in_results.is_empty(),
-                    results_for_interval.get().is_empty(),
-                );
-                if publish_initial_results {
-                    selection_touched_for_interval.set(false);
-                    selected_index.set(0);
-                    selected_id.set(
-                        built_in_results
-                            .first()
-                            .map(|result| result.id.clone())
-                            .unwrap_or_default(),
-                    );
-                    // Built-in/system commands are synchronous and must be actionable
-                    // immediately. External providers still replace this snapshot once
-                    // their responses arrive for the same query sequence.
-                    results_for_interval.set(built_in_results);
-                }
-                // Do not derive or display completion from the previous query while
-                // the current provider generation is still pending.
-                inline_completion_for_interval.set(String::new());
-            }
-            request_scroll(scroll_request_for_interval);
-            action_mode.set(false);
-            action_index.set(0);
-            action_items.set(Vec::new());
-            actions_for_interval.borrow_mut().clear();
-            if !has_query {
-                inline_completion_for_interval.set(String::new());
-                status_for_interval.set(i18n_hub.tr(|| t!("status.ready").into_owned()).get());
-            } else {
-                status_for_interval.set(String::from(
-                    "Searching applications, Everything and native Flow plugins...",
-                ));
-                application_worker.request(sequence, next_query.clone());
-                // Everything is the always-on file provider for every non-empty
-                // query. Native Everything syntax such as `ext:zip`, `parent:`,
-                // `file:`, and `dm:today` stays unchanged; a leading `.ext`
-                // shorthand is normalized only for this provider.
-                if auto_enable_everything_for_interval.get()
-                    && next_query.trim().len() >= EVERYTHING_MIN_QUERY_LEN
-                {
-                    everything_worker.request(sequence, normalize_everything_query(&next_query));
-                }
-                if next_query.trim().len() >= PLUGIN_MIN_QUERY_LEN {
-                    plugin_worker.request(
-                        sequence,
-                        next_query.clone(),
-                        obsidian_enabled_for_interval.get(),
-                        obsidian_alias_for_interval.get(),
-                        google_enabled_for_interval.get(),
-                        google_alias_for_interval.get(),
-                    );
-                    native_plugin_worker.request(sequence, next_query.clone());
-                }
-            }
             last_query = next_query;
         })
         .on_window_show({
