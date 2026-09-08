@@ -216,6 +216,27 @@ pub(crate) fn handle_open_location_shortcut(
     true
 }
 
+pub(crate) fn handle_run_as_admin_shortcut(
+    query: Signal<String>,
+    query_history: &Rc<RefCell<Vec<String>>>,
+    settings: &Arc<RwLock<Settings>>,
+    current_results: &[SearchResult],
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    window_op: &WindowOpHandle,
+) -> bool {
+    record_query_history(settings, query_history, &query.get());
+    if let Some(result) = selected_result(current_results, &selected_id.get(), selected_index.get())
+    {
+        if let Some(target) = result.target.as_deref() {
+            if launch::run_as_admin(target) {
+                window_op.hide_window();
+            }
+        }
+    }
+    true
+}
+
 pub(crate) fn handle_action_entry(
     query: Signal<String>,
     query_caret_position: Signal<usize>,

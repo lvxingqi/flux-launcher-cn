@@ -44,9 +44,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 use crate::icons::{
     icon_completion_generation_changed, tray_icon, SHELL_ICON_COMPLETION_GENERATION,
 };
+use actions::ActionItem;
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
-use actions::{selected_result, ActionItem};
 use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
     should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
@@ -61,15 +61,15 @@ use i18n::{
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
     cycle_query_history, handle_action_entry, handle_action_mode, handle_copy_shortcut,
-    handle_enter_key, handle_open_location_shortcut, handle_result_navigation, open_history_mode,
-    ActionKeyContext, EnterKeyContext,
+    handle_enter_key, handle_open_location_shortcut, handle_result_navigation,
+    handle_run_as_admin_shortcut, open_history_mode, ActionKeyContext, EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
     normalize_built_in_executable_targets, should_publish_initial_query_results, SearchRuntimeState,
 };
 use result_row::result_row;
-use settings_state::{record_query_history, save_settings, set_game_mode, LauncherSettingsState};
+use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
 use ui_helpers::{
     action_bar_content, action_row, priorities_empty, priority_row, selection_color_hex,
     selection_palette,
@@ -1235,23 +1235,15 @@ fn main() {
         }
 
         if is_run_as_admin_key(&event) {
-            record_query_history(
-                &settings_for_history_for_keys,
+            return handle_run_as_admin_shortcut(
+                query_for_keys,
                 &query_history_for_keys,
-                &query,
-            );
-            if let Some(result) = selected_result(
+                &settings_for_history_for_keys,
                 &current_results,
-                &selected_id_for_keys.get(),
-                selected_index_for_keys.get(),
-            ) {
-                if let Some(target) = result.target.as_deref() {
-                    if launch::run_as_admin(target) {
-                        window_op_for_keys.hide_window();
-                    }
-                }
-            }
-            return true;
+                selected_id_for_keys,
+                selected_index_for_keys,
+                &window_op_for_keys,
+            );
         }
         match event.key {
             Key::Up | Key::Down => handle_result_navigation(
