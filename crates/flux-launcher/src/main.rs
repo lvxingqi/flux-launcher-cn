@@ -46,9 +46,7 @@ use crate::icons::{
 };
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
-use actions::{
-    actions_for_result, copy_result_file, copy_result_path, selected_result, ActionItem,
-};
+use actions::{copy_result_file, copy_result_path, selected_result, ActionItem};
 use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
     should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
@@ -62,8 +60,8 @@ use i18n::{
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
-    cycle_query_history, handle_action_mode, handle_result_navigation, open_history_mode,
-    ActionKeyContext,
+    cycle_query_history, handle_action_entry, handle_action_mode, handle_result_navigation,
+    open_history_mode, ActionKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
@@ -1290,27 +1288,21 @@ fn main() {
                 selection_touched_for_keys,
                 scroll_request_for_keys,
             ),
-            Key::Right => {
-                if query_caret_position_for_keys.get() != query_for_keys.get().chars().count() {
-                    return false;
-                }
-                if let Some(result) = selected_result(
-                    &current_results,
-                    &selected_id_for_keys.get(),
-                    selected_index_for_keys.get(),
-                ) {
-                    let actions = actions_for_result(&result, &plugin_actions_for_keys.borrow());
-                    if !actions.is_empty() {
-                        action_items_for_keys.set(actions);
-                        action_index_for_keys.set(0);
-                        action_scroll_pending_for_keys.set(true);
-                        action_mode_for_keys.set(true);
-                        show_results_for_keys.set(true);
-                        size_for_keys.set(i32::from(launcher_width.get()), ACTION_WINDOW_HEIGHT);
-                    }
-                }
-                true
-            }
+            Key::Right => handle_action_entry(
+                query_for_keys,
+                query_caret_position_for_keys,
+                &current_results,
+                selected_id_for_keys,
+                selected_index_for_keys,
+                &plugin_actions_for_keys,
+                action_items_for_keys,
+                action_index_for_keys,
+                action_scroll_pending_for_keys,
+                action_mode_for_keys,
+                show_results_for_keys,
+                &size_for_keys,
+                launcher_width,
+            ),
             Key::Enter => {
                 if history_mode_for_keys.get() {
                     if let Some(result) = selected_result(

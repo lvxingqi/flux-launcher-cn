@@ -1,8 +1,12 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
-use crate::actions::{execute_result_action, selected_result, ActionItem, ActionKind};
+use crate::actions::{
+    actions_for_result, execute_result_action, selected_result, ActionItem, ActionKind,
+};
+use crate::plugins::PluginAction;
 use crate::query::{refresh_merged_results, ProviderResults};
 use crate::settings_state::{record_query_history, set_result_priority};
 use flux_core::{history_results, PriorityEntry, SearchResult, Settings};
@@ -145,6 +149,39 @@ pub(crate) fn handle_result_navigation(
         selected_id.set(result.id.clone());
     }
     scroll_pending.set(true);
+    true
+}
+
+pub(crate) fn handle_action_entry(
+    query: Signal<String>,
+    query_caret_position: Signal<usize>,
+    current_results: &[SearchResult],
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    plugin_actions: &Rc<RefCell<HashMap<String, PluginAction>>>,
+    action_items: Signal<Vec<ActionItem>>,
+    action_index: Signal<usize>,
+    action_scroll_pending: Signal<bool>,
+    action_mode: Signal<bool>,
+    show_results: Signal<bool>,
+    window_size: &WindowSizeHandle,
+    launcher_width: Signal<u16>,
+) -> bool {
+    if query_caret_position.get() != query.get().chars().count() {
+        return false;
+    }
+    if let Some(result) = selected_result(current_results, &selected_id.get(), selected_index.get())
+    {
+        let actions = actions_for_result(&result, &plugin_actions.borrow());
+        if !actions.is_empty() {
+            action_items.set(actions);
+            action_index.set(0);
+            action_scroll_pending.set(true);
+            action_mode.set(true);
+            show_results.set(true);
+            window_size.set(i32::from(launcher_width.get()), crate::ACTION_WINDOW_HEIGHT);
+        }
+    }
     true
 }
 
