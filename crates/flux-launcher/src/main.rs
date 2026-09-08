@@ -44,9 +44,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 use crate::icons::{
     icon_completion_generation_changed, tray_icon, SHELL_ICON_COMPLETION_GENERATION,
 };
+#[cfg(test)]
+pub(crate) use actions::ActionKind;
 use actions::{
-    actions_for_result, copy_result_file, copy_result_path, execute_result_action, selected_result,
-    ActionItem, ActionKind,
+    actions_for_result, copy_result_file, copy_result_path, selected_result, ActionItem,
 };
 use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
@@ -60,16 +61,13 @@ use i18n::{
 };
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
-use keyboard::{cycle_query_history, open_history_mode};
+use keyboard::{cycle_query_history, handle_action_mode, open_history_mode, ActionKeyContext};
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
-    normalize_built_in_executable_targets, refresh_merged_results,
-    should_publish_initial_query_results, SearchRuntimeState,
+    normalize_built_in_executable_targets, should_publish_initial_query_results, SearchRuntimeState,
 };
 use result_row::result_row;
-use settings_state::{
-    record_query_history, save_settings, set_game_mode, set_result_priority, LauncherSettingsState,
-};
+use settings_state::{record_query_history, save_settings, set_game_mode, LauncherSettingsState};
 use ui_helpers::{
     action_bar_content, action_row, priorities_empty, priority_row, selection_color_hex,
     selection_palette,
@@ -1235,95 +1233,30 @@ fn main() {
         }
 
         if action_mode_for_keys.get() {
-            let count = action_items_for_keys.get().len();
-            if count == 0 {
-                action_mode_for_keys.set(false);
-                return true;
-            }
-            match event.key {
-                Key::Up => {
-                    action_index_for_keys.set(
-                        action_index_for_keys
-                            .get()
-                            .checked_sub(1)
-                            .unwrap_or(count - 1),
-                    );
-                    action_scroll_pending_for_keys.set(true);
-                    return true;
-                }
-                Key::Down => {
-                    action_index_for_keys.set((action_index_for_keys.get() + 1) % count);
-                    action_scroll_pending_for_keys.set(true);
-                    return true;
-                }
-                Key::Left | Key::Escape => {
-                    action_mode_for_keys.set(false);
-                    action_index_for_keys.set(0);
-                    size_for_keys.set(
-                        i32::from(launcher_width.get()),
-                        i32::from(launcher_height.get()),
-                    );
-                    return true;
-                }
-                Key::Enter | Key::Space => {
-                    if history_mode_for_keys.get() {
-                        if let Some(result) = selected_result(
-                            &current_results,
-                            &selected_id_for_keys.get(),
-                            selected_index_for_keys.get(),
-                        ) {
-                            query_for_keys.set(result.title.clone());
-                            history_mode_for_keys.set(false);
-                        }
-                        return true;
-                    }
-                    record_query_history(
-                        &settings_for_history_for_keys,
-                        &query_history_for_keys,
-                        &query,
-                    );
-                    if let Some(result) = selected_result(
-                        &current_results,
-                        &selected_id_for_keys.get(),
-                        selected_index_for_keys.get(),
-                    ) {
-                        if let Some(action) = action_items_for_keys
-                            .get()
-                            .get(action_index_for_keys.get())
-                            .cloned()
-                        {
-                            let executed = if matches!(action.kind, ActionKind::SetPriority) {
-                                let saved = set_result_priority(
-                                    &settings_for_priority_for_keys,
-                                    priorities_for_keys,
-                                    &result,
-                                );
-                                if saved {
-                                    refresh_merged_results(
-                                        &providers_for_keys,
-                                        query_for_priority_keys,
-                                        priorities_for_keys,
-                                        results_for_keys,
-                                    );
-                                }
-                                saved
-                            } else {
-                                execute_result_action(&result, &action.kind)
-                            };
-                            if executed {
-                                window_op_for_keys.hide_window();
-                            }
-                        }
-                    }
-                    action_mode_for_keys.set(false);
-                    size_for_keys.set(
-                        i32::from(launcher_width.get()),
-                        i32::from(launcher_height.get()),
-                    );
-                    return true;
-                }
-                _ => return true,
-            }
+            return handle_action_mode(
+                event.key,
+                &ActionKeyContext {
+                    action_mode: action_mode_for_keys,
+                    action_index: action_index_for_keys,
+                    action_items: action_items_for_keys,
+                    action_scroll_pending: action_scroll_pending_for_keys,
+                    history_mode: history_mode_for_keys,
+                    query: query_for_keys,
+                    query_history: Rc::clone(&query_history_for_keys),
+                    current_results: current_results.clone(),
+                    selected_id: selected_id_for_keys,
+                    selected_index: selected_index_for_keys,
+                    settings: Arc::clone(&settings_for_priority_for_keys),
+                    priorities: priorities_for_keys,
+                    providers: Rc::clone(&providers_for_keys),
+                    priority_query: query_for_priority_keys,
+                    results: results_for_keys,
+                    window_op: window_op_for_keys.clone(),
+                    window_size: size_for_keys.clone(),
+                    launcher_width,
+                    launcher_height,
+                },
+            );
         }
 
         if is_run_as_admin_key(&event) {

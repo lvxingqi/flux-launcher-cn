@@ -1,8 +1,126 @@
-use crate::actions::ActionItem;
-use flux_core::{history_results, SearchResult};
-use windui::app::WindowSizeHandle;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+
+use crate::actions::{execute_result_action, selected_result, ActionItem, ActionKind};
+use crate::query::{refresh_merged_results, ProviderResults};
+use crate::settings_state::{record_query_history, set_result_priority};
+use flux_core::{history_results, PriorityEntry, SearchResult, Settings};
+use windui::app::{WindowOpHandle, WindowSizeHandle};
 use windui::event::Key;
 use windui::prelude::Signal;
+
+pub(crate) struct ActionKeyContext {
+    pub(crate) action_mode: Signal<bool>,
+    pub(crate) action_index: Signal<usize>,
+    pub(crate) action_items: Signal<Vec<ActionItem>>,
+    pub(crate) action_scroll_pending: Signal<bool>,
+    pub(crate) history_mode: Signal<bool>,
+    pub(crate) query: Signal<String>,
+    pub(crate) query_history: Rc<RefCell<Vec<String>>>,
+    pub(crate) current_results: Vec<SearchResult>,
+    pub(crate) selected_id: Signal<String>,
+    pub(crate) selected_index: Signal<usize>,
+    pub(crate) settings: Arc<RwLock<Settings>>,
+    pub(crate) priorities: Signal<Vec<PriorityEntry>>,
+    pub(crate) providers: Rc<RefCell<ProviderResults>>,
+    pub(crate) priority_query: Signal<String>,
+    pub(crate) results: Signal<Vec<SearchResult>>,
+    pub(crate) window_op: WindowOpHandle,
+    pub(crate) window_size: WindowSizeHandle,
+    pub(crate) launcher_width: Signal<u16>,
+    pub(crate) launcher_height: Signal<u16>,
+}
+
+pub(crate) fn handle_action_mode(key: Key, context: &ActionKeyContext) -> bool {
+    let count = context.action_items.get().len();
+    if count == 0 {
+        context.action_mode.set(false);
+        return true;
+    }
+    match key {
+        Key::Up => {
+            context.action_index.set(
+                context
+                    .action_index
+                    .get()
+                    .checked_sub(1)
+                    .unwrap_or(count - 1),
+            );
+            context.action_scroll_pending.set(true);
+        }
+        Key::Down => {
+            context
+                .action_index
+                .set((context.action_index.get() + 1) % count);
+            context.action_scroll_pending.set(true);
+        }
+        Key::Left | Key::Escape => {
+            context.action_mode.set(false);
+            context.action_index.set(0);
+            context.window_size.set(
+                i32::from(context.launcher_width.get()),
+                i32::from(context.launcher_height.get()),
+            );
+        }
+        Key::Enter | Key::Space => {
+            if context.history_mode.get() {
+                if let Some(result) = selected_result(
+                    &context.current_results,
+                    &context.selected_id.get(),
+                    context.selected_index.get(),
+                ) {
+                    context.query.set(result.title.clone());
+                    context.history_mode.set(false);
+                }
+            } else {
+                record_query_history(
+                    &context.settings,
+                    &context.query_history,
+                    &context.query.get(),
+                );
+                if let Some(result) = selected_result(
+                    &context.current_results,
+                    &context.selected_id.get(),
+                    context.selected_index.get(),
+                ) {
+                    if let Some(action) = context
+                        .action_items
+                        .get()
+                        .get(context.action_index.get())
+                        .cloned()
+                    {
+                        let executed = if matches!(action.kind, ActionKind::SetPriority) {
+                            let saved =
+                                set_result_priority(&context.settings, context.priorities, &result);
+                            if saved {
+                                refresh_merged_results(
+                                    &context.providers,
+                                    context.priority_query,
+                                    context.priorities,
+                                    context.results,
+                                );
+                            }
+                            saved
+                        } else {
+                            execute_result_action(&result, &action.kind)
+                        };
+                        if executed {
+                            context.window_op.hide_window();
+                        }
+                    }
+                }
+                context.action_mode.set(false);
+                context.window_size.set(
+                    i32::from(context.launcher_width.get()),
+                    i32::from(context.launcher_height.get()),
+                );
+            }
+        }
+        _ => {}
+    }
+    true
+}
 
 pub(crate) fn history_cursor_step(
     history_len: usize,
