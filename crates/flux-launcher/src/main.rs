@@ -14,6 +14,7 @@ mod fullscreen;
 mod hotkeys;
 mod i18n;
 mod icons;
+mod keyboard;
 mod keyboard_layout;
 mod launch;
 mod monitor;
@@ -49,14 +50,17 @@ use actions::{
 };
 use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
-    history_results, should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind,
-    SearchModel, SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH,
-    MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
+    should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
+    SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT,
+    MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
     language_preference_from_index, language_preference_index,
 };
+#[cfg(test)]
+pub(crate) use keyboard::history_cursor_step;
+use keyboard::{cycle_query_history, open_history_mode};
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
     normalize_built_in_executable_targets, refresh_merged_results,
@@ -297,17 +301,6 @@ fn inline_completion_suffix(query: &str, results: &[SearchResult]) -> String {
             Some(result.title.chars().skip(query_len).collect())
         })
         .unwrap_or_default()
-}
-
-fn history_cursor_step(history_len: usize, cursor: Option<usize>, key: Key) -> Option<usize> {
-    if history_len == 0 {
-        return None;
-    }
-    Some(match (key, cursor) {
-        (Key::Up, Some(index)) => index.saturating_sub(1),
-        (Key::Down, Some(index)) => (index + 1).min(history_len - 1),
-        (_, _) => history_len - 1,
-    })
 }
 
 #[cfg(windows)]
@@ -1129,45 +1122,33 @@ fn main() {
         }
         if event.ctrl && matches!(event.key, Key::Char('h') | Key::Char('H')) {
             let history = query_history_for_keys.borrow();
-            if history.is_empty() {
-                return false;
-            }
-            let filtered = history_results(&history, &query_for_keys.get());
-            history_mode_for_keys.set(true);
-            history_cursor_for_keys.set(None);
-            action_mode_for_keys.set(false);
-            action_items_for_keys.set(Vec::new());
-            inline_completion_for_keys.set(String::new());
-            selected_index_for_keys.set(0);
-            selected_id_for_keys.set(
-                filtered
-                    .first()
-                    .map(|result| result.id.clone())
-                    .unwrap_or_default(),
+            return open_history_mode(
+                &history,
+                query_for_keys,
+                history_mode_for_keys,
+                history_cursor_for_keys,
+                action_mode_for_keys,
+                action_items_for_keys,
+                inline_completion_for_keys,
+                selected_index_for_keys,
+                selected_id_for_keys,
+                results_for_keys,
+                show_results_for_keys,
+                &size_for_keys,
+                launcher_width,
+                launcher_height,
             );
-            results_for_keys.set(filtered);
-            show_results_for_keys.set(true);
-            size_for_keys.set(
-                i32::from(launcher_width.get()),
-                i32::from(launcher_height.get()),
-            );
-            return true;
         }
         let query = query_for_keys.get();
         let history = query_history_for_keys.borrow();
         if alt_down && !event.ctrl && !event.shift && matches!(event.key, Key::Up | Key::Down) {
-            if history.is_empty() {
-                return false;
-            }
-            let Some(next) =
-                history_cursor_step(history.len(), history_cursor_for_keys.get(), event.key)
-            else {
-                return false;
-            };
-            history_cursor_for_keys.set(Some(next));
-            history_mode_for_keys.set(false);
-            query_for_keys.set(history[next].clone());
-            return true;
+            return cycle_query_history(
+                &history,
+                event.key,
+                history_cursor_for_keys,
+                history_mode_for_keys,
+                query_for_keys,
+            );
         }
         if !history_mode_for_keys.get()
             && event.key == Key::Up
