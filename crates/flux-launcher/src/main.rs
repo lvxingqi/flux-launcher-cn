@@ -46,8 +46,7 @@ use actions::{
     actions_for_result, copy_result_file, copy_result_path, execute_result_action, selected_result,
     ActionItem, ActionKind,
 };
-use applications::ApplicationResponse;
-use everything::{EverythingResponse, EverythingRuntimeState, InstallationState};
+use everything::{EverythingRuntimeState, InstallationState};
 use flux_core::{
     history_results, should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind,
     SearchModel, SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH,
@@ -57,10 +56,9 @@ use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
     language_preference_from_index, language_preference_index,
 };
-use plugins::{NativePluginQueryResponse, PluginQueryResponse};
-use provider_state::ProviderWorkers;
+use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
-    commit_provider_results, normalize_built_in_executable_targets, refresh_merged_results,
+    normalize_built_in_executable_targets, refresh_merged_results,
     should_publish_initial_query_results, SearchRuntimeState,
 };
 use result_row::{result_row, ActionRowAnchor};
@@ -1003,103 +1001,29 @@ fn main() {
     *action_window_slot.borrow_mut() = Some(window_size.clone());
     let size_for_interval = window_size.clone();
     let size_for_visibility = window_size.clone();
-    let query_for_applications = query;
-    let results_for_applications = results;
-    let inline_completion_for_applications = inline_completion;
-    let status_for_applications = status;
-    let selected_id_for_applications = selected_id;
-    let selected_index_for_applications = selected_index;
-    let selection_touched_for_applications = selection_touched;
-    let sequence_for_applications = current_sequence;
-    let providers_for_applications = Rc::clone(&provider_results);
-    let priorities_for_applications = priorities;
-    let application_sender = app.channel::<ApplicationResponse>(move |_, response| {
-        if response.sequence != sequence_for_applications.get()
-            || response.query != query_for_applications.get()
-        {
-            return;
-        }
-        let mut providers = providers_for_applications.borrow_mut();
-        if providers.sequence != response.sequence {
-            return;
-        }
-        providers.applications = response.results;
-        providers.applications_ready = true;
-        if providers.core_ready() {
-            let priorities = priorities_for_applications
-                .get()
-                .iter()
-                .map(|entry| entry.id.clone())
-                .collect::<Vec<_>>();
-            commit_provider_results(
-                &providers,
-                &query_for_applications.get(),
-                &priorities,
-                selected_id_for_applications,
-                selected_index_for_applications,
-                selection_touched_for_applications,
-                inline_completion_for_applications,
-                results_for_applications,
-            );
-        }
-        status_for_applications.set(response.status);
-    });
-    let query_for_everything = query;
-    let results_for_everything = results;
-    let inline_completion_for_everything = inline_completion;
-    let status_for_everything = status;
-    let selected_id_for_everything = selected_id;
-    let selected_index_for_everything = selected_index;
-    let selection_touched_for_everything = selection_touched;
-    let sequence_for_everything = current_sequence;
-    let providers_for_everything = Rc::clone(&provider_results);
-    let priorities_for_everything = priorities;
-    let auto_enable_everything_for_response = auto_enable_everything;
-    let everything_installed_for_response = everything_installed;
-    let everything_status_for_response = everything_status;
-    let everything_sender = app.channel::<EverythingResponse>(move |_, response| {
-        if !auto_enable_everything_for_response.get() {
-            everything_status_for_response.set(t!("everything.auto_enable_disabled").into_owned());
-            return;
-        }
-        if response.sequence != sequence_for_everything.get()
-            || response.query != normalize_everything_query(&query_for_everything.get())
-        {
-            return;
-        }
-        let mut providers = providers_for_everything.borrow_mut();
-        if providers.sequence != response.sequence {
-            return;
-        }
-        providers.everything_ready = true;
-        if response.available {
-            everything_installed_for_response.set(true);
-            everything_status_for_response.set(t!("everything.ipc_available").into_owned());
-            providers.everything = response.results;
-        } else if everything_installed_for_response.get() {
-            everything_status_for_response.set(t!("everything.ipc_unavailable").into_owned());
-        } else {
-            everything_status_for_response.set(t!("everything.not_installed_winget").into_owned());
-        }
-        if providers.core_ready() {
-            let priorities = priorities_for_everything
-                .get()
-                .iter()
-                .map(|entry| entry.id.clone())
-                .collect::<Vec<_>>();
-            commit_provider_results(
-                &providers,
-                &query_for_everything.get(),
-                &priorities,
-                selected_id_for_everything,
-                selected_index_for_everything,
-                selection_touched_for_everything,
-                inline_completion_for_everything,
-                results_for_everything,
-            );
-        }
-        status_for_everything.set(response.status);
-    });
+    let provider_channels = register_provider_channels(
+        &mut app,
+        ProviderChannelContext {
+            query,
+            results,
+            inline_completion,
+            status,
+            selected_id,
+            selected_index,
+            selection_touched,
+            current_sequence,
+            provider_results: Rc::clone(&provider_results),
+            priorities,
+            plugin_actions: Rc::clone(&plugin_actions),
+            auto_enable_everything,
+            everything_installed,
+            everything_status,
+        },
+    );
+    let application_sender = provider_channels.application_sender;
+    let everything_sender = provider_channels.everything_sender;
+    let plugin_sender = provider_channels.plugin_sender;
+    let native_sender = provider_channels.native_sender;
     if settings.auto_enable_everything {
         match everything::start_background_if_installed() {
             Ok(InstallationState::Installed(_)) => {
@@ -1117,100 +1041,6 @@ fn main() {
     } else {
         everything_status.set(t!("everything.auto_enable_disabled").into_owned());
     }
-
-    let query_for_plugins = query;
-    let results_for_plugins = results;
-    let inline_completion_for_plugins = inline_completion;
-    let status_for_plugins = status;
-    let selected_id_for_plugins = selected_id;
-    let selected_index_for_plugins = selected_index;
-    let selection_touched_for_plugins = selection_touched;
-    let sequence_for_plugins = current_sequence;
-    let providers_for_plugins = Rc::clone(&provider_results);
-    let priorities_for_plugins = priorities;
-    let actions_for_plugins = Rc::clone(&plugin_actions);
-    let plugin_sender = app.channel::<PluginQueryResponse>(move |_, response| {
-        if response.sequence != sequence_for_plugins.get()
-            || response.query != query_for_plugins.get()
-        {
-            return;
-        }
-        let mut providers = providers_for_plugins.borrow_mut();
-        if providers.sequence != response.sequence {
-            return;
-        }
-        if response.available {
-            providers.plugins = response.results;
-            *actions_for_plugins.borrow_mut() = response.actions;
-            if providers.core_ready() {
-                let priorities = priorities_for_plugins
-                    .get()
-                    .iter()
-                    .map(|entry| entry.id.clone())
-                    .collect::<Vec<_>>();
-                commit_provider_results(
-                    &providers,
-                    &query_for_plugins.get(),
-                    &priorities,
-                    selected_id_for_plugins,
-                    selected_index_for_plugins,
-                    selection_touched_for_plugins,
-                    inline_completion_for_plugins,
-                    results_for_plugins,
-                );
-            }
-        }
-        status_for_plugins.set(response.status);
-    });
-    let query_for_native_plugins = query;
-    let results_for_native_plugins = results;
-    let inline_completion_for_native_plugins = inline_completion;
-    let status_for_native_plugins = status;
-    let selected_id_for_native_plugins = selected_id;
-    let selected_index_for_native_plugins = selected_index;
-    let selection_touched_for_native_plugins = selection_touched;
-    let sequence_for_native_plugins = current_sequence;
-    let providers_for_native_plugins = Rc::clone(&provider_results);
-    let priorities_for_native_plugins = priorities;
-    let actions_for_native_plugins = Rc::clone(&plugin_actions);
-    let native_sender = app.channel::<NativePluginQueryResponse>(move |_, response| {
-        if response.sequence != sequence_for_native_plugins.get()
-            || response.query != query_for_native_plugins.get()
-        {
-            return;
-        }
-        let mut providers = providers_for_native_plugins.borrow_mut();
-        if providers.sequence != response.sequence {
-            return;
-        }
-        let has_native_results = !response.results.is_empty();
-        providers.native_plugins = response.results;
-        if response.available {
-            actions_for_native_plugins
-                .borrow_mut()
-                .extend(response.actions);
-            if has_native_results {
-                status_for_native_plugins.set(response.status.clone());
-            }
-        }
-        if providers.core_ready() {
-            let priorities = priorities_for_native_plugins
-                .get()
-                .iter()
-                .map(|entry| entry.id.clone())
-                .collect::<Vec<_>>();
-            commit_provider_results(
-                &providers,
-                &query_for_native_plugins.get(),
-                &priorities,
-                selected_id_for_native_plugins,
-                selected_index_for_native_plugins,
-                selection_touched_for_native_plugins,
-                inline_completion_for_native_plugins,
-                results_for_native_plugins,
-            );
-        }
-    });
     let provider_workers = ProviderWorkers::new(
         application_sender,
         everything_sender,
