@@ -1,4 +1,12 @@
 use crate::i18n::I18nHub;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+
+use flux_core::{PriorityEntry, SearchResult, Settings};
+
+use crate::query::{refresh_merged_results, ProviderResults};
+use crate::settings_state::{move_priority_entry, remove_priority_entry};
 use windui::prelude::*;
 
 fn action_hint(key: &'static str, label: Signal<String>) -> Element {
@@ -69,4 +77,112 @@ pub(crate) fn action_bar_content(i18n_hub: I18nHub) -> Element {
             "Alt + Enter",
             i18n_hub.tr(|| t!("action_bar.open_file_location").into_owned()),
         ))
+}
+
+pub(crate) fn priority_row(
+    entry: &PriorityEntry,
+    rank: usize,
+    priorities: Signal<Vec<PriorityEntry>>,
+    results: Signal<Vec<SearchResult>>,
+    providers: Rc<RefCell<ProviderResults>>,
+    query: Signal<String>,
+    settings: Arc<RwLock<Settings>>,
+) -> Element {
+    let entry_id = entry.id.clone();
+    let title = entry.title.clone();
+    let target = entry.target.clone();
+    let settings_for_up = Arc::clone(&settings);
+    let settings_for_down = Arc::clone(&settings);
+    let settings_for_remove = Arc::clone(&settings);
+    let providers_for_up = Rc::clone(&providers);
+    let providers_for_down = Rc::clone(&providers);
+    let providers_for_remove = Rc::clone(&providers);
+    let query_for_up = query;
+    let query_for_down = query;
+    let query_for_remove = query;
+    let id_for_up = entry_id.clone();
+    let id_for_down = entry_id.clone();
+    let id_for_remove = entry_id;
+
+    Element::row()
+        .width_match()
+        .height(58)
+        .padding_xy(10, 5)
+        .spacing(8)
+        .corner(9.0)
+        .bg(Color::rgba(255, 255, 255, 12))
+        .child(
+            Element::label(format!("{rank}"))
+                .font_size(16.0)
+                .fg(Color::rgba(170, 204, 255, 245))
+                .width(24)
+                .align(Align::Center),
+        )
+        .child(
+            Element::col()
+                .weight(1.0)
+                .spacing(1)
+                .child(
+                    Element::label(title)
+                        .font_size(13.0)
+                        .fg(Color::WHITE)
+                        .max_lines(1)
+                        .truncate(Truncate::End),
+                )
+                .child(
+                    Element::label(target)
+                        .font_size(10.0)
+                        .fg(Color::rgba(235, 241, 255, 170))
+                        .max_lines(1)
+                        .truncate(Truncate::End),
+                ),
+        )
+        .child(
+            Element::button("↑")
+                .neutral()
+                .outline_soft()
+                .on_click(move |ctx| {
+                    if move_priority_entry(&settings_for_up, priorities, &id_for_up, -1) {
+                        refresh_merged_results(
+                            &providers_for_up,
+                            query_for_up,
+                            priorities,
+                            results,
+                        );
+                        ctx.toast_ok(t!("priorities.moved_up"));
+                    }
+                }),
+        )
+        .child(
+            Element::button("↓")
+                .neutral()
+                .outline_soft()
+                .on_click(move |ctx| {
+                    if move_priority_entry(&settings_for_down, priorities, &id_for_down, 1) {
+                        refresh_merged_results(
+                            &providers_for_down,
+                            query_for_down,
+                            priorities,
+                            results,
+                        );
+                        ctx.toast_ok(t!("priorities.moved_down"));
+                    }
+                }),
+        )
+        .child(
+            Element::button(t!("priorities.remove"))
+                .neutral()
+                .outline_soft()
+                .on_click(move |ctx| {
+                    if remove_priority_entry(&settings_for_remove, priorities, &id_for_remove) {
+                        refresh_merged_results(
+                            &providers_for_remove,
+                            query_for_remove,
+                            priorities,
+                            results,
+                        );
+                        ctx.toast_ok(t!("priorities.removed"));
+                    }
+                }),
+        )
 }

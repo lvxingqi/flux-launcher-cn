@@ -64,10 +64,9 @@ use query::{
 };
 use result_row::{result_row, ActionRowAnchor};
 use settings_state::{
-    move_priority_entry, record_query_history, remove_priority_entry, save_settings, set_game_mode,
-    set_result_priority, LauncherSettingsState,
+    record_query_history, save_settings, set_game_mode, set_result_priority, LauncherSettingsState,
 };
-use ui_helpers::{action_bar_content, selection_color_hex, selection_palette};
+use ui_helpers::{action_bar_content, priority_row, selection_color_hex, selection_palette};
 use update_state::{
     register_update_channels, request_update_check, request_update_install, update_check_due,
 };
@@ -1781,113 +1780,21 @@ fn main() {
         priorities,
         |entry| entry.id.clone(),
         move |entry| {
-            let entry_id = entry.id.clone();
             let rank = priorities
                 .get()
                 .iter()
-                .position(|candidate| candidate.id == entry_id)
+                .position(|candidate| candidate.id == entry.id)
                 .map(|index| index + 1)
                 .unwrap_or_default();
-            let title = entry.title.clone();
-            let target = entry.target.clone();
-            let settings_for_up = Arc::clone(&settings_for_priority_ui);
-            let settings_for_down = Arc::clone(&settings_for_priority_ui);
-            let settings_for_remove = Arc::clone(&settings_for_priority_ui);
-            let providers_for_up = Rc::clone(&providers_for_priority_ui);
-            let providers_for_down = Rc::clone(&providers_for_priority_ui);
-            let providers_for_remove = Rc::clone(&providers_for_priority_ui);
-            let query_for_up = query_for_priority_ui;
-            let query_for_down = query_for_priority_ui;
-            let query_for_remove = query_for_priority_ui;
-            let id_for_up = entry_id.clone();
-            let id_for_down = entry_id.clone();
-            let id_for_remove = entry_id.clone();
-            Element::row()
-                .width_match()
-                .height(58)
-                .padding_xy(10, 5)
-                .spacing(8)
-                .corner(9.0)
-                .bg(Color::rgba(255, 255, 255, 12))
-                .child(
-                    Element::label(format!("{rank}"))
-                        .font_size(16.0)
-                        .fg(Color::rgba(170, 204, 255, 245))
-                        .width(24)
-                        .align(Align::Center),
-                )
-                .child(
-                    Element::col()
-                        .weight(1.0)
-                        .spacing(1)
-                        .child(
-                            Element::label(title)
-                                .font_size(13.0)
-                                .fg(Color::WHITE)
-                                .max_lines(1)
-                                .truncate(Truncate::End),
-                        )
-                        .child(
-                            Element::label(target)
-                                .font_size(10.0)
-                                .fg(Color::rgba(235, 241, 255, 170))
-                                .max_lines(1)
-                                .truncate(Truncate::End),
-                        ),
-                )
-                .child(
-                    Element::button("↑")
-                        .neutral()
-                        .outline_soft()
-                        .on_click(move |ctx| {
-                            if move_priority_entry(&settings_for_up, priorities, &id_for_up, -1) {
-                                refresh_merged_results(
-                                    &providers_for_up,
-                                    query_for_up,
-                                    priorities,
-                                    results,
-                                );
-                                ctx.toast_ok(t!("priorities.moved_up"));
-                            }
-                        }),
-                )
-                .child(
-                    Element::button("↓")
-                        .neutral()
-                        .outline_soft()
-                        .on_click(move |ctx| {
-                            if move_priority_entry(&settings_for_down, priorities, &id_for_down, 1)
-                            {
-                                refresh_merged_results(
-                                    &providers_for_down,
-                                    query_for_down,
-                                    priorities,
-                                    results,
-                                );
-                                ctx.toast_ok(t!("priorities.moved_down"));
-                            }
-                        }),
-                )
-                .child(
-                    Element::button(t!("priorities.remove"))
-                        .neutral()
-                        .outline_soft()
-                        .on_click(move |ctx| {
-                            if remove_priority_entry(
-                                &settings_for_remove,
-                                priorities,
-                                &id_for_remove,
-                            ) {
-                                refresh_merged_results(
-                                    &providers_for_remove,
-                                    query_for_remove,
-                                    priorities,
-                                    results,
-                                );
-                                ctx.toast_ok(t!("priorities.removed"));
-                            }
-                        }),
-                )
+            priority_row(
+                &entry,
+                rank,
+                priorities,
+                results,
+                Rc::clone(&providers_for_priority_ui),
+                query_for_priority_ui,
+                Arc::clone(&settings_for_priority_ui),
+            )
         },
     );
     let priorities_empty = Element::label(t!("priorities.empty"))
