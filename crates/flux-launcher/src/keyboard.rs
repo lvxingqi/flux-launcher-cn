@@ -6,6 +6,8 @@ use std::sync::{Arc, RwLock};
 use crate::actions::{
     actions_for_result, execute_result_action, selected_result, ActionItem, ActionKind,
 };
+use crate::launch;
+use crate::plugins;
 use crate::plugins::PluginAction;
 use crate::query::{refresh_merged_results, ProviderResults};
 use crate::settings_state::{record_query_history, set_result_priority};
@@ -180,6 +182,65 @@ pub(crate) fn handle_action_entry(
             action_mode.set(true);
             show_results.set(true);
             window_size.set(i32::from(launcher_width.get()), crate::ACTION_WINDOW_HEIGHT);
+        }
+    }
+    true
+}
+
+pub(crate) struct EnterKeyContext {
+    pub(crate) history_mode: Signal<bool>,
+    pub(crate) query: Signal<String>,
+    pub(crate) query_history: Rc<RefCell<Vec<String>>>,
+    pub(crate) settings: Arc<RwLock<Settings>>,
+    pub(crate) current_results: Vec<SearchResult>,
+    pub(crate) selected_id: Signal<String>,
+    pub(crate) selected_index: Signal<usize>,
+    pub(crate) recycle_bin_confirmation: Signal<bool>,
+    pub(crate) settings_visible: Signal<bool>,
+    pub(crate) window_size: WindowSizeHandle,
+    pub(crate) window_op: WindowOpHandle,
+    pub(crate) plugin_actions: Rc<RefCell<HashMap<String, PluginAction>>>,
+}
+
+pub(crate) fn handle_enter_key(context: &EnterKeyContext) -> bool {
+    if context.history_mode.get() {
+        if let Some(result) = selected_result(
+            &context.current_results,
+            &context.selected_id.get(),
+            context.selected_index.get(),
+        ) {
+            context.query.set(result.title.clone());
+            context.history_mode.set(false);
+        }
+        return true;
+    }
+
+    record_query_history(
+        &context.settings,
+        &context.query_history,
+        &context.query.get(),
+    );
+    if let Some(result) = selected_result(
+        &context.current_results,
+        &context.selected_id.get(),
+        context.selected_index.get(),
+    ) {
+        if result.id == "empty-recycle-bin" {
+            context.recycle_bin_confirmation.set(true);
+        } else if result.id == "flux-settings" {
+            context.settings_visible.set(true);
+            context
+                .window_size
+                .set(crate::SETTINGS_WINDOW_WIDTH, crate::SETTINGS_WINDOW_HEIGHT);
+        } else if result.id == "open-recycle-bin" {
+            launch::open_recycle_bin_async();
+            context.window_op.hide_window();
+        } else if let Some(target) = result.target.as_deref() {
+            launch::open_path_async(target);
+            context.window_op.hide_window();
+        } else if let Some(action) = context.plugin_actions.borrow().get(&result.id).cloned() {
+            plugins::execute_async(action);
+            context.window_op.hide_window();
         }
     }
     true

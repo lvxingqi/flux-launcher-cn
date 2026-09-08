@@ -60,8 +60,8 @@ use i18n::{
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
-    cycle_query_history, handle_action_entry, handle_action_mode, handle_result_navigation,
-    open_history_mode, ActionKeyContext,
+    cycle_query_history, handle_action_entry, handle_action_mode, handle_enter_key,
+    handle_result_navigation, open_history_mode, ActionKeyContext, EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 use query::{
@@ -1303,48 +1303,20 @@ fn main() {
                 &size_for_keys,
                 launcher_width,
             ),
-            Key::Enter => {
-                if history_mode_for_keys.get() {
-                    if let Some(result) = selected_result(
-                        &current_results,
-                        &selected_id_for_keys.get(),
-                        selected_index_for_keys.get(),
-                    ) {
-                        query_for_keys.set(result.title.clone());
-                        history_mode_for_keys.set(false);
-                    }
-                    return true;
-                }
-                record_query_history(
-                    &settings_for_history_for_keys,
-                    &query_history_for_keys,
-                    &query,
-                );
-                if let Some(result) = selected_result(
-                    &current_results,
-                    &selected_id_for_keys.get(),
-                    selected_index_for_keys.get(),
-                ) {
-                    if result.id == "empty-recycle-bin" {
-                        recycle_bin_confirmation_for_keys.set(true);
-                    } else if result.id == "flux-settings" {
-                        settings_visible_for_keys.set(true);
-                        size_for_keys.set(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT);
-                    } else if result.id == "open-recycle-bin" {
-                        launch::open_recycle_bin_async();
-                        window_op_for_keys.hide_window();
-                    } else if let Some(target) = result.target.as_deref() {
-                        launch::open_path_async(target);
-                        window_op_for_keys.hide_window();
-                    } else if let Some(action) =
-                        plugin_actions_for_keys.borrow().get(&result.id).cloned()
-                    {
-                        plugins::execute_async(action);
-                        window_op_for_keys.hide_window();
-                    }
-                }
-                true
-            }
+            Key::Enter => handle_enter_key(&EnterKeyContext {
+                history_mode: history_mode_for_keys,
+                query: query_for_keys,
+                query_history: Rc::clone(&query_history_for_keys),
+                settings: Arc::clone(&settings_for_history_for_keys),
+                current_results: current_results.clone(),
+                selected_id: selected_id_for_keys,
+                selected_index: selected_index_for_keys,
+                recycle_bin_confirmation: recycle_bin_confirmation_for_keys,
+                settings_visible: settings_visible_for_keys,
+                window_size: size_for_keys.clone(),
+                window_op: window_op_for_keys.clone(),
+                plugin_actions: Rc::clone(&plugin_actions_for_keys),
+            }),
             _ => false,
         }
     });
