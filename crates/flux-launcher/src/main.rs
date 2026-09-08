@@ -27,6 +27,7 @@ mod result_row;
 mod settings_state;
 mod settings_view;
 mod startup;
+mod ui_helpers;
 mod update_state;
 mod updater;
 mod visual_preview;
@@ -66,6 +67,7 @@ use settings_state::{
     move_priority_entry, record_query_history, remove_priority_entry, save_settings, set_game_mode,
     set_result_priority, LauncherSettingsState,
 };
+use ui_helpers::action_bar_content;
 use update_state::{
     register_update_channels, request_update_check, request_update_install, update_check_due,
 };
@@ -582,43 +584,7 @@ fn main() {
         .border(Color::rgba(0, 0, 0, 0), 0)
         .padding_xy(13, 0);
 
-    let action_hint = |key: &'static str, label: Signal<String>| {
-        Element::row()
-            .height(22)
-            .cross(Align::Center)
-            .spacing(4)
-            .child(
-                Element::label(key)
-                    .font_size(9.0)
-                    .fg(Color::rgba(235, 243, 255, 235))
-                    .bg(Color::rgba(255, 255, 255, 24))
-                    .corner(5.0)
-                    .padding_xy(4, 2),
-            )
-            .child(
-                Element::label(label)
-                    .font_size(10.0)
-                    .fg(Color::rgba(222, 233, 248, 220)),
-            )
-    };
-    // Use a bounded frame plus an explicitly centered content row instead of
-    // full-width spacer children. This keeps the three hints visually centered
-    // between the launcher content insets while the window width changes.
-    let action_bar_content = Element::row()
-        .height(22)
-        .spacing(8)
-        .child(action_hint(
-            "↵",
-            i18n_hub.tr(|| t!("action_bar.open").into_owned()),
-        ))
-        .child(action_hint(
-            "Ctrl + R",
-            i18n_hub.tr(|| t!("action_bar.run_as_admin").into_owned()),
-        ))
-        .child(action_hint(
-            "Alt + Enter",
-            i18n_hub.tr(|| t!("action_bar.open_file_location").into_owned()),
-        ));
+    let action_bar_content = action_bar_content(i18n_hub.clone());
     let action_bar = Element::stack()
         .width(ACTION_BAR_WIDTH)
         .height(ACTION_BAR_HEIGHT)
