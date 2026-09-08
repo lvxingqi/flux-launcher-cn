@@ -1,12 +1,103 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use flux_core::Settings;
+use windui::app::App;
 use windui::prelude::{Sender, Signal};
 
 pub(crate) struct UpdateRuntimeState {
     pub(crate) install_in_flight: Rc<Cell<bool>>,
     pub(crate) check_in_flight: Rc<Cell<bool>>,
+}
+
+pub(crate) struct UpdateChannels {
+    pub(crate) install_sender: Sender<UpdateInstallResponse>,
+    pub(crate) update_sender: Sender<crate::updater::UpdateCheckResponse>,
+    pub(crate) install_in_flight: Rc<Cell<bool>>,
+    pub(crate) check_in_flight: Rc<Cell<bool>>,
+}
+
+pub(crate) fn register_update_channels(
+    app: &mut App,
+    shared_settings: Arc<RwLock<Settings>>,
+    update_status: Signal<String>,
+    update_available: Signal<Option<crate::updater::StableUpdate>>,
+    update_install_progress: Signal<Option<(String, crate::updater::DownloadProgress)>>,
+    update_installing: Signal<bool>,
+) -> UpdateChannels {
+    let runtime = UpdateRuntimeState::new();
+    let install_in_flight = runtime.install_in_flight;
+    let check_in_flight = runtime.check_in_flight;
+    let install_in_flight_for_channel = Rc::clone(&install_in_flight);
+    let install_sender = app.channel::<UpdateInstallResponse>(move |ctx, response| {
+        match apply_install_response(
+            response,
+            &install_in_flight_for_channel,
+            update_installing,
+            update_install_progress,
+            update_status,
+        ) {
+            UpdateInstallUiAction::None => {}
+            UpdateInstallUiAction::Toast(message) => ctx.toast_ok(message),
+            UpdateInstallUiAction::ToastAndQuit(message) => {
+                ctx.toast_ok(message);
+                ctx.quit();
+            }
+        }
+    });
+    let install_sender_for_check = install_sender.clone();
+    let check_in_flight_for_channel = Rc::clone(&check_in_flight);
+    let install_in_flight_for_check = Rc::clone(&install_in_flight);
+    let update_sender = app.channel::<crate::updater::UpdateCheckResponse>(move |ctx, response| {
+        check_in_flight_for_channel.set(false);
+        if let Ok(mut settings) = shared_settings.write() {
+            settings.last_update_check_unix = response.checked_at;
+            let _ = crate::settings_state::save_settings(&settings);
+        }
+        match response.result {
+            Ok(Some(update)) => {
+                let message = t!("updater.available", version = update.version).into_owned();
+                update_status.set(message.clone());
+                update_available.set(Some(update.clone()));
+                let auto_install = shared_settings
+                    .read()
+                    .map(|settings| settings.auto_install_updates)
+                    .unwrap_or(false);
+                if auto_install {
+                    let relaunch_mode = crate::relaunch_mode_for_auto_install();
+                    update_installing.set(true);
+                    update_status
+                        .set(t!("updater.preparing", version = update.version).into_owned());
+                    if !request_update_install(
+                        update,
+                        install_sender_for_check.clone(),
+                        &install_in_flight_for_check,
+                        relaunch_mode,
+                    ) {
+                        update_installing.set(false);
+                        update_status.set(t!("updater.already_installing").into_owned());
+                    }
+                } else {
+                    ctx.toast_ok(message);
+                }
+            }
+            Ok(None) => {
+                update_available.set(None);
+                update_status
+                    .set(t!("updater.up_to_date", version = crate::CURRENT_VERSION).into_owned());
+            }
+            Err(error) => {
+                update_status.set(t!("updater.check_failed", error = error).into_owned());
+            }
+        }
+    });
+    UpdateChannels {
+        install_sender,
+        update_sender,
+        install_in_flight,
+        check_in_flight,
+    }
 }
 
 impl UpdateRuntimeState {

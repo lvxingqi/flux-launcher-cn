@@ -69,8 +69,7 @@ use settings_state::{
     set_result_priority, LauncherSettingsState,
 };
 use update_state::{
-    apply_install_response, request_update_check, request_update_install, update_check_due,
-    UpdateInstallResponse, UpdateInstallUiAction, UpdateRuntimeState,
+    register_update_channels, request_update_check, request_update_install, update_check_due,
 };
 use window_state::{
     apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
@@ -980,79 +979,18 @@ fn main() {
     let settings_for_interval_geometry = Arc::clone(&shared_settings);
     let window_op = window_bootstrap.window_op;
     let cursor_visibility = window_bootstrap.cursor_visibility;
-    let update_status_for_channel = update_status;
-    let update_available_for_channel = update_available;
-    let update_install_progress_for_channel = update_install_progress;
-    let update_installing_for_channel = update_installing;
-    let update_runtime = UpdateRuntimeState::new();
-    let update_install_in_flight = update_runtime.install_in_flight;
-    let update_install_in_flight_for_channel = Rc::clone(&update_install_in_flight);
-    let update_install_sender = app.channel::<UpdateInstallResponse>(move |ctx, response| {
-        match apply_install_response(
-            response,
-            &update_install_in_flight_for_channel,
-            update_installing_for_channel,
-            update_install_progress_for_channel,
-            update_status_for_channel,
-        ) {
-            UpdateInstallUiAction::None => {}
-            UpdateInstallUiAction::Toast(message) => ctx.toast_ok(message),
-            UpdateInstallUiAction::ToastAndQuit(message) => {
-                ctx.toast_ok(message);
-                ctx.quit();
-            }
-        }
-    });
-    let update_install_sender_for_channel = update_install_sender.clone();
-    let settings_for_update_channel = Arc::clone(&shared_settings);
-    let update_check_in_flight = update_runtime.check_in_flight;
-    let update_check_in_flight_for_channel = Rc::clone(&update_check_in_flight);
-    let update_install_in_flight_for_check_channel = Rc::clone(&update_install_in_flight);
-    let update_sender = app.channel::<updater::UpdateCheckResponse>(move |ctx, response| {
-        update_check_in_flight_for_channel.set(false);
-        if let Ok(mut settings) = settings_for_update_channel.write() {
-            settings.last_update_check_unix = response.checked_at;
-            let _ = save_settings(&settings);
-        }
-        match response.result {
-            Ok(Some(update)) => {
-                let message = t!("updater.available", version = update.version).into_owned();
-                update_status_for_channel.set(message.clone());
-                update_available_for_channel.set(Some(update.clone()));
-                let auto_install = settings_for_update_channel
-                    .read()
-                    .map(|settings| settings.auto_install_updates)
-                    .unwrap_or(false);
-                if auto_install {
-                    let relaunch_mode = relaunch_mode_for_auto_install();
-                    update_installing_for_channel.set(true);
-                    update_status_for_channel
-                        .set(t!("updater.preparing", version = update.version).into_owned());
-                    if !request_update_install(
-                        update,
-                        update_install_sender_for_channel.clone(),
-                        &update_install_in_flight_for_check_channel,
-                        relaunch_mode,
-                    ) {
-                        update_installing_for_channel.set(false);
-                        update_status_for_channel
-                            .set(t!("updater.already_installing").into_owned());
-                    }
-                } else {
-                    ctx.toast_ok(message);
-                }
-            }
-            Ok(None) => {
-                update_available_for_channel.set(None);
-                update_status_for_channel
-                    .set(t!("updater.up_to_date", version = CURRENT_VERSION).into_owned());
-            }
-            Err(error) => {
-                update_status_for_channel
-                    .set(t!("updater.check_failed", error = error).into_owned());
-            }
-        }
-    });
+    let update_channels = register_update_channels(
+        &mut app,
+        Arc::clone(&shared_settings),
+        update_status,
+        update_available,
+        update_install_progress,
+        update_installing,
+    );
+    let update_install_sender = update_channels.install_sender;
+    let update_sender = update_channels.update_sender;
+    let update_install_in_flight = update_channels.install_in_flight;
+    let update_check_in_flight = update_channels.check_in_flight;
     let update_checks_allowed = std::env::var("FLUX_DISABLE_UPDATE_CHECKS")
         .map(|value| value != "1")
         .unwrap_or(true);
