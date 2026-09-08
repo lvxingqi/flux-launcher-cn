@@ -62,11 +62,13 @@ use query::{
     normalize_built_in_executable_targets, refresh_merged_results,
     should_publish_initial_query_results, SearchRuntimeState,
 };
-use result_row::{result_row, ActionRowAnchor};
+use result_row::result_row;
 use settings_state::{
     record_query_history, save_settings, set_game_mode, set_result_priority, LauncherSettingsState,
 };
-use ui_helpers::{action_bar_content, priority_row, selection_color_hex, selection_palette};
+use ui_helpers::{
+    action_bar_content, action_row, priority_row, selection_color_hex, selection_palette,
+};
 use update_state::{
     register_update_channels, request_update_check, request_update_install, update_check_due,
 };
@@ -726,87 +728,34 @@ fn main() {
             ),
     );
 
-    let settings_for_action_list = Arc::clone(&shared_settings);
-    let priorities_for_action_list = priorities;
-    let providers_for_action_list = Rc::clone(&provider_results);
-    let query_for_action_list = query;
+    let shared_settings_for_action_list = Arc::clone(&shared_settings);
+    let provider_results_for_action_list = Rc::clone(&provider_results);
     let action_list = Element::list_signal(
         action_items_for_rows,
         |item| item.id.clone(),
         move |item| {
-            let item_id = item.id.clone();
-            let item_label = item.label.clone();
-            let item_kind = item.kind.clone();
-            let settings_for_item_action = Arc::clone(&settings_for_action_list);
-            let priorities_for_item_action = priorities_for_action_list;
-            let providers_for_item_action = Rc::clone(&providers_for_action_list);
-            let query_for_item_action = query_for_action_list;
-            Element::row()
-                .widget(ActionRowAnchor {
-                    item_index: action_items_for_rows
-                        .get()
-                        .iter()
-                        .position(|candidate| candidate.id == item_id)
-                        .unwrap_or_default(),
-                    action_index: action_index_for_rows,
-                    scroll_pending: action_scroll_pending,
-                    last_pointer: None,
-                    pressed: false,
-                    on_click: None,
-                })
-                .reactive()
-                .width_match()
-                .height(36)
-                .padding_xy(10, 4)
-                .corner(9.0)
-                .child(
-                    Element::label(item_label)
-                        .font_size(13.0)
-                        .fg(Color::rgba(250, 252, 255, 255))
-                        .max_lines(1)
-                        .truncate(Truncate::End)
-                        .width_match(),
-                )
-                .on_click({
-                    let action_window_slot = action_window_slot_for_rows.clone();
-                    move |ctx| {
-                        let executed = selected_result(
-                            &result_source.get(),
-                            &selected_for_rows.get(),
-                            selected_index_for_rows.get(),
-                        )
-                        .is_some_and(|result| {
-                            if matches!(item_kind, ActionKind::SetPriority) {
-                                let saved = set_result_priority(
-                                    &settings_for_item_action,
-                                    priorities_for_item_action,
-                                    &result,
-                                );
-                                if saved {
-                                    refresh_merged_results(
-                                        &providers_for_item_action,
-                                        query_for_item_action,
-                                        priorities_for_item_action,
-                                        result_source,
-                                    );
-                                }
-                                saved
-                            } else {
-                                execute_result_action(&result, &item_kind)
-                            }
-                        });
-                        if executed {
-                            ctx.hide_window();
-                        }
-                        action_mode_for_rows.set(false);
-                        if let Some(handle) = action_window_slot.borrow().as_ref() {
-                            handle.set(
-                                i32::from(launcher_width.get()),
-                                i32::from(launcher_height.get()),
-                            );
-                        }
-                    }
-                })
+            let item_index = action_items_for_rows
+                .get()
+                .iter()
+                .position(|candidate| candidate.id == item.id)
+                .unwrap_or_default();
+            action_row(
+                &item,
+                item_index,
+                action_index_for_rows,
+                action_scroll_pending,
+                result_source,
+                selected_for_rows,
+                selected_index_for_rows,
+                action_mode_for_rows,
+                launcher_width_for_rows,
+                launcher_height,
+                action_window_slot_for_rows.clone(),
+                Arc::clone(&shared_settings_for_action_list),
+                priorities,
+                Rc::clone(&provider_results_for_action_list),
+                query,
+            )
         },
     )
     .height(174)

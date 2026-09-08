@@ -3,10 +3,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
+use crate::actions::{execute_result_action, selected_result, ActionItem, ActionKind};
 use flux_core::{PriorityEntry, SearchResult, Settings};
 
 use crate::query::{refresh_merged_results, ProviderResults};
-use crate::settings_state::{move_priority_entry, remove_priority_entry};
+use crate::result_row::ActionRowAnchor;
+use crate::settings_state::{move_priority_entry, remove_priority_entry, set_result_priority};
+use windui::app::WindowSizeHandle;
 use windui::prelude::*;
 
 fn action_hint(key: &'static str, label: Signal<String>) -> Element {
@@ -185,4 +188,84 @@ pub(crate) fn priority_row(
                     }
                 }),
         )
+}
+
+pub(crate) fn action_row(
+    item: &ActionItem,
+    item_index: usize,
+    action_index: Signal<usize>,
+    action_scroll_pending: Signal<bool>,
+    result_source: Signal<Vec<SearchResult>>,
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    action_mode: Signal<bool>,
+    launcher_width: Signal<u16>,
+    launcher_height: Signal<u16>,
+    action_window_slot: Rc<RefCell<Option<WindowSizeHandle>>>,
+    settings: Arc<RwLock<Settings>>,
+    priorities: Signal<Vec<PriorityEntry>>,
+    providers: Rc<RefCell<ProviderResults>>,
+    query: Signal<String>,
+) -> Element {
+    let item_label = item.label.clone();
+    let item_kind = item.kind.clone();
+    let settings_for_item_action = settings;
+    let providers_for_item_action = providers;
+    let query_for_item_action = query;
+
+    Element::row()
+        .widget(ActionRowAnchor {
+            item_index,
+            action_index,
+            scroll_pending: action_scroll_pending,
+            last_pointer: None,
+            pressed: false,
+            on_click: None,
+        })
+        .reactive()
+        .width_match()
+        .height(36)
+        .padding_xy(10, 4)
+        .corner(9.0)
+        .child(
+            Element::label(item_label)
+                .font_size(13.0)
+                .fg(Color::rgba(250, 252, 255, 255))
+                .max_lines(1)
+                .truncate(Truncate::End)
+                .width_match(),
+        )
+        .on_click(move |ctx| {
+            let executed = selected_result(
+                &result_source.get(),
+                &selected_id.get(),
+                selected_index.get(),
+            )
+            .is_some_and(|result| {
+                if matches!(item_kind, ActionKind::SetPriority) {
+                    let saved = set_result_priority(&settings_for_item_action, priorities, &result);
+                    if saved {
+                        refresh_merged_results(
+                            &providers_for_item_action,
+                            query_for_item_action,
+                            priorities,
+                            result_source,
+                        );
+                    }
+                    saved
+                } else {
+                    execute_result_action(&result, &item_kind)
+                }
+            });
+            if executed {
+                ctx.hide_window();
+            }
+            action_mode.set(false);
+            if let Some(handle) = action_window_slot.borrow().as_ref() {
+                handle.set(
+                    i32::from(launcher_width.get()),
+                    i32::from(launcher_height.get()),
+                );
+            }
+        })
 }
