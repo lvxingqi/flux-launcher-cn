@@ -67,7 +67,7 @@ use settings_state::{
     move_priority_entry, record_query_history, remove_priority_entry, save_settings, set_game_mode,
     set_result_priority, LauncherSettingsState,
 };
-use ui_helpers::action_bar_content;
+use ui_helpers::{action_bar_content, selection_color_hex, selection_palette};
 use update_state::{
     register_update_channels, request_update_check, request_update_install, update_check_due,
 };
@@ -151,41 +151,11 @@ fn selection_color_for_settings(settings: &Settings) -> Color {
     Color::rgba(r, g, b, 84)
 }
 
-fn selection_color_hex(value: u32) -> String {
-    format!("#{value:06X}")
-}
-
 fn parse_selection_color(value: &str) -> Option<u32> {
     let trimmed = value.trim().trim_start_matches('#');
     (trimmed.len() == 6)
         .then(|| u32::from_str_radix(trimmed, 16).ok())
         .flatten()
-}
-
-fn selection_palette(custom_selection_color: Signal<String>) -> Element {
-    const COLORS: &[u32] = &[
-        0x4c8bf4, 0x0078d4, 0x00a4ef, 0x107c10, 0x498205, 0xffb900, 0xd83b01, 0xe74856, 0x8764b8,
-        0x744da9, 0x038387, 0x605e5c,
-    ];
-    let mut row = Element::row().spacing(6).width_match();
-    for &value in COLORS {
-        let label = selection_color_hex(value);
-        row = row.child(
-            Element::col()
-                .width(24)
-                .height(24)
-                .bg(Color::rgb(
-                    ((value >> 16) & 0xff) as u8,
-                    ((value >> 8) & 0xff) as u8,
-                    (value & 0xff) as u8,
-                ))
-                .corner(6.0)
-                .clickable()
-                .tooltip(label)
-                .on_click(move |_| custom_selection_color.set(selection_color_hex(value))),
-        );
-    }
-    row
 }
 
 fn display_title(title: &str) -> String {

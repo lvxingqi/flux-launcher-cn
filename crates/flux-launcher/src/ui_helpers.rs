@@ -21,6 +21,36 @@ fn action_hint(key: &'static str, label: Signal<String>) -> Element {
         )
 }
 
+pub(crate) fn selection_color_hex(value: u32) -> String {
+    format!("#{value:06X}")
+}
+
+pub(crate) fn selection_palette(custom_selection_color: Signal<String>) -> Element {
+    const COLORS: &[u32] = &[
+        0x4c8bf4, 0x0078d4, 0x00a4ef, 0x107c10, 0x498205, 0xffb900, 0xd83b01, 0xe74856, 0x8764b8,
+        0x744da9, 0x038387, 0x605e5c,
+    ];
+    let mut row = Element::row().spacing(6).width_match();
+    for &value in COLORS {
+        let label = selection_color_hex(value);
+        row = row.child(
+            Element::col()
+                .width(24)
+                .height(24)
+                .bg(Color::rgb(
+                    ((value >> 16) & 0xff) as u8,
+                    ((value >> 8) & 0xff) as u8,
+                    (value & 0xff) as u8,
+                ))
+                .corner(6.0)
+                .clickable()
+                .tooltip(label)
+                .on_click(move |_| custom_selection_color.set(selection_color_hex(value))),
+        );
+    }
+    row
+}
+
 pub(crate) fn action_bar_content(i18n_hub: I18nHub) -> Element {
     // Keep the three hints in a bounded row so they remain centered between
     // the launcher content insets while the window width changes.
