@@ -33,6 +33,7 @@ mod ui_helpers;
 mod update_state;
 mod updater;
 mod visual_preview;
+mod window_lifecycle;
 mod window_state;
 
 use std::cell::{Cell, RefCell};
@@ -150,7 +151,7 @@ fn custom_selection_color_rgb(value: u32) -> (u8, u8, u8) {
     )
 }
 
-fn selection_color_for_settings(settings: &Settings) -> Color {
+pub(crate) fn selection_color_for_settings(settings: &Settings) -> Color {
     let (r, g, b) = if settings.use_system_accent {
         accent::system_accent_rgb()
             .unwrap_or_else(|| custom_selection_color_rgb(settings.custom_selection_color))
@@ -2960,80 +2961,38 @@ fn main() {
             sequence_for_interval.set(sequence);
             last_query = next_query;
         })
-        .on_window_show({
-            let settings = Arc::clone(&shared_settings);
-            let cursor_visibility_for_show = cursor_visibility.clone();
-            let settings_visible_for_show = settings_visible;
-            let size_for_show = window_size.clone();
-            move || {
-                cursor_visibility_for_show.show();
-                if let Ok(settings) = settings.read() {
-                    selection_color.set(selection_color_for_settings(&settings));
-                }
-                // Tray activation can show the HWND before the first interval pass.
-                // Apply the Settings client size in this lifecycle callback too, so
-                // the initial frame is the full panel rather than a 72-DIP strip.
-                if settings_visible_for_show.get() {
-                    size_for_show.set(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT);
-                }
-            }
-        })
-        .on_window_activated({
-            let settings = Arc::clone(&shared_settings);
-            move || {
-                let layout_enabled = settings
-                    .read()
-                    .map(|settings| settings.switch_to_english_layout)
-                    .unwrap_or(true);
-                if layout_enabled {
-                    keyboard_layout::switch_to_english();
-                }
-            }
-        })
-        .on_window_hide({
-            let settings = Arc::clone(&shared_settings);
-            let cancel_settings = Rc::clone(&cancel_settings);
-            move || {
-                let was_settings_visible = settings_visible.get();
-                if was_settings_visible {
-                    cancel_settings();
-                }
-                let (enabled, clear_query) = settings
-                    .read()
-                    .map(|settings| {
-                        (
-                            settings.switch_to_english_layout,
-                            settings.clear_query_on_activation,
-                        )
-                    })
-                    .unwrap_or((true, clear_query_on_activation.get()));
-                if enabled {
-                    keyboard_layout::restore_previous();
-                }
-                if clear_query {
-                    query.set(String::new());
-                    results.set(Vec::new());
-                    selected_id.set(String::new());
-                    selected_index.set(0);
-                    selection_touched.set(false);
-                    show_results.set(false);
-                    history_mode.set(false);
-                    history_cursor.set(None);
-                    action_mode.set(false);
-                    action_index.set(0);
-                    action_items.set(Vec::new());
-                    inline_completion.set(String::new());
-                    scroll_request_for_rows.set(false);
-                    let (width, height) = launcher_window_geometry_with_sizes(
-                        settings_visible.get(),
-                        false,
-                        launcher_width.get() as i32,
-                        launcher_height.get() as i32,
-                    );
-                    size_for_visibility.set(width, height);
-                }
-            }
-        })
+        .on_window_show(window_lifecycle::on_window_show(
+            Arc::clone(&shared_settings),
+            cursor_visibility.clone(),
+            settings_visible,
+            selection_color,
+            window_size.clone(),
+        ))
+        .on_window_activated(window_lifecycle::on_window_activated(Arc::clone(
+            &shared_settings,
+        )))
+        .on_window_hide(window_lifecycle::on_window_hide(
+            Arc::clone(&shared_settings),
+            Rc::clone(&cancel_settings),
+            settings_visible,
+            clear_query_on_activation,
+            query,
+            results,
+            selected_id,
+            selected_index,
+            selection_touched,
+            show_results,
+            history_mode,
+            history_cursor,
+            action_mode,
+            action_index,
+            action_items,
+            inline_completion,
+            scroll_request_for_rows,
+            launcher_width,
+            launcher_height,
+            size_for_visibility,
+        ))
         .run();
 }
 
