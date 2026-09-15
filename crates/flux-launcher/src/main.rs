@@ -2144,40 +2144,15 @@ fn main() {
                                         .width(VISUAL_SLIDER_WIDTH),
                                 )
                                 .child(Element::text_input(launcher_width_input, "420").width(76))
-                                .child(
-                                    Element::button(
-                                        i18n_hub.tr(|| t!("settings.visual.reset").into_owned()),
-                                    )
-                                    .neutral()
-                                    .on_click(move |_| {
-                                        let width = DEFAULT_LAUNCHER_WIDTH;
-                                        let height = launcher_height.get();
-                                        eprintln!(
-                                            "Visual width reset clicked: {}x{}",
-                                            width, height
-                                        );
-                                        launcher_width.set(width);
-                                        launcher_width_input.set(width.to_string());
-                                        launcher_width_slider.set(dimension_slider_fraction(
-                                            width,
-                                            MIN_LAUNCHER_WIDTH,
-                                            MAX_LAUNCHER_WIDTH,
-                                        ));
-                                        launcher_preview_text.set(
-                                            t!(
-                                                "settings.visual.client_area",
-                                                width = width,
-                                                height = height
-                                            )
-                                            .into_owned(),
-                                        );
-                                        visual_preview_generation_for_width_reset.set(
-                                            visual_preview_generation_for_width_reset
-                                                .get()
-                                                .saturating_add(1),
-                                        );
-                                    }),
-                                )
+                                .child(settings_view::launcher_width_reset_button(
+                                    i18n_hub.clone(),
+                                    launcher_width,
+                                    launcher_height,
+                                    launcher_width_input,
+                                    launcher_width_slider,
+                                    launcher_preview_text,
+                                    visual_preview_generation_for_width_reset,
+                                ))
                                 .child(
                                     Element::label(
                                         i18n_hub.tr(|| t!("settings.visual.dip").into_owned()),
@@ -2207,40 +2182,15 @@ fn main() {
                                         .width(VISUAL_SLIDER_WIDTH),
                                 )
                                 .child(Element::text_input(launcher_height_input, "382").width(76))
-                                .child(
-                                    Element::button(
-                                        i18n_hub.tr(|| t!("settings.visual.reset").into_owned()),
-                                    )
-                                    .neutral()
-                                    .on_click(move |_| {
-                                        let width = launcher_width.get();
-                                        let height = DEFAULT_LAUNCHER_HEIGHT;
-                                        eprintln!(
-                                            "Visual height reset clicked: {}x{}",
-                                            width, height
-                                        );
-                                        launcher_height.set(height);
-                                        launcher_height_input.set(height.to_string());
-                                        launcher_height_slider.set(dimension_slider_fraction(
-                                            height,
-                                            MIN_LAUNCHER_HEIGHT,
-                                            MAX_LAUNCHER_HEIGHT,
-                                        ));
-                                        launcher_preview_text.set(
-                                            t!(
-                                                "settings.visual.client_area",
-                                                width = width,
-                                                height = height
-                                            )
-                                            .into_owned(),
-                                        );
-                                        visual_preview_generation_for_height_reset.set(
-                                            visual_preview_generation_for_height_reset
-                                                .get()
-                                                .saturating_add(1),
-                                        );
-                                    }),
-                                )
+                                .child(settings_view::launcher_height_reset_button(
+                                    i18n_hub.clone(),
+                                    launcher_width,
+                                    launcher_height,
+                                    launcher_height_input,
+                                    launcher_height_slider,
+                                    launcher_preview_text,
+                                    visual_preview_generation_for_height_reset,
+                                ))
                                 .child(
                                     Element::label(
                                         i18n_hub.tr(|| t!("settings.visual.dip").into_owned()),

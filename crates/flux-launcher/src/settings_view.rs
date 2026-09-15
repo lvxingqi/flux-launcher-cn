@@ -46,6 +46,74 @@ pub(crate) fn priority_list(
     )
 }
 
+pub(crate) fn launcher_width_reset_button(
+    i18n_hub: I18nHub,
+    launcher_width: Signal<u16>,
+    launcher_height: Signal<u16>,
+    launcher_width_input: Signal<String>,
+    launcher_width_slider: Signal<f32>,
+    launcher_preview_text: Signal<String>,
+    visual_preview_generation: Signal<u64>,
+) -> Element {
+    Element::button(i18n_hub.tr(|| t!("settings.visual.reset").into_owned()))
+        .neutral()
+        .on_click(move |_| {
+            let width = flux_core::DEFAULT_LAUNCHER_WIDTH;
+            let height = launcher_height.get();
+            eprintln!("Visual width reset clicked: {}x{}", width, height);
+            launcher_width.set(width);
+            launcher_width_input.set(width.to_string());
+            launcher_width_slider.set(crate::dimension_slider_fraction(
+                width,
+                flux_core::MIN_LAUNCHER_WIDTH,
+                flux_core::MAX_LAUNCHER_WIDTH,
+            ));
+            launcher_preview_text.set(
+                t!(
+                    "settings.visual.client_area",
+                    width = width,
+                    height = height
+                )
+                .into_owned(),
+            );
+            visual_preview_generation.set(visual_preview_generation.get().saturating_add(1));
+        })
+}
+
+pub(crate) fn launcher_height_reset_button(
+    i18n_hub: I18nHub,
+    launcher_width: Signal<u16>,
+    launcher_height: Signal<u16>,
+    launcher_height_input: Signal<String>,
+    launcher_height_slider: Signal<f32>,
+    launcher_preview_text: Signal<String>,
+    visual_preview_generation: Signal<u64>,
+) -> Element {
+    Element::button(i18n_hub.tr(|| t!("settings.visual.reset").into_owned()))
+        .neutral()
+        .on_click(move |_| {
+            let width = launcher_width.get();
+            let height = flux_core::DEFAULT_LAUNCHER_HEIGHT;
+            eprintln!("Visual height reset clicked: {}x{}", width, height);
+            launcher_height.set(height);
+            launcher_height_input.set(height.to_string());
+            launcher_height_slider.set(crate::dimension_slider_fraction(
+                height,
+                flux_core::MIN_LAUNCHER_HEIGHT,
+                flux_core::MAX_LAUNCHER_HEIGHT,
+            ));
+            launcher_preview_text.set(
+                t!(
+                    "settings.visual.client_area",
+                    width = width,
+                    height = height
+                )
+                .into_owned(),
+            );
+            visual_preview_generation.set(visual_preview_generation.get().saturating_add(1));
+        })
+}
+
 impl SettingsUiState {
     pub(crate) fn new(visible: Signal<bool>, tab: Signal<usize>) -> Self {
         Self { visible, tab }
