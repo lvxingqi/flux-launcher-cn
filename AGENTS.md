@@ -10,7 +10,7 @@ The launcher is a tray-resident application. It must use the real Windows DWM Ac
 
 All Flux-owned source comments, documentation, and release notes must be written in English. Do not add Chinese symbols or Chinese comments to Flux-owned code. User-facing application strings must be externalized through the rust-i18n `t!` macro as described in the Internationalization section below; do not embed visible text directly in UI code. Conversation with the project owner may use Russian.
 
-Use concise English commit messages. Do not commit Manus-internal scratch notes, generated planning files, temporary screenshots, or unrelated artifacts. User-facing documentation may be committed when it is part of the requested product change.
+Use concise English commit messages in Conventional Commit form: `<type>(launcher): <imperative summary>`, for example `refactor(launcher): extract query dispatch`, `fix(launcher): restore hidden startup`, or `docs(launcher): clarify release validation`. Use the most specific applicable type such as `refactor`, `fix`, `feat`, `test`, or `docs`; do not use vague checkpoint messages. Do not commit Manus-internal scratch notes, generated planning files, temporary screenshots, or unrelated artifacts. User-facing documentation may be committed when it is part of the requested product change.
 
 ## Internationalization (i18n)
 

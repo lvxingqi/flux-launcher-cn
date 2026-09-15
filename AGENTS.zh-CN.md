@@ -10,7 +10,7 @@ Flux Launcher 是一款使用 Rust 编写的 Windows 11 原生启动器。GUI �
 
 所有 Flux 自有的源码注释、文档与发布说明必须使用英文编写。不得在 Flux 自有的代码中添加中文符号或中文注释。面向用户的应用字符串必须按照下文"国际化"章节所述，通过 rust-i18n 的 `t!` 宏外部化；不得将可见文本直接嵌入 UI 代码。与项目负责人的对话可以使用俄语。
 
-使用简洁的英文提交信息。不得提交 Manus 内部草稿笔记、生成的计划文件、临时截图或无关产物。当面向用户的文档属于所请求的产品变更的一部分时，方可提交。
+提交信息必须使用简洁的英文 Conventional Commit 格式：`<type>(launcher): <imperative summary>`，例如 `refactor(launcher): extract query dispatch`、`fix(launcher): restore hidden startup` 或 `docs(launcher): clarify release validation`。使用最具体且适用的类型，例如 `refactor`、`fix`、`feat`、`test` 或 `docs`；不得使用含义模糊的 checkpoint 提交信息。不得提交 Manus 内部草稿笔记、生成的计划文件、临时截图或无关产物。当面向用户的文档属于所请求的产品变更的一部分时，方可提交。
 
 ## 国际化（i18n）
 
