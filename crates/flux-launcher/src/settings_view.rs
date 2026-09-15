@@ -114,6 +114,119 @@ pub(crate) fn launcher_height_reset_button(
         })
 }
 
+pub(crate) struct VisualApplyContext {
+    pub(crate) i18n_hub: I18nHub,
+    pub(crate) settings: Arc<RwLock<Settings>>,
+    pub(crate) launcher_width: Signal<u16>,
+    pub(crate) launcher_height: Signal<u16>,
+    pub(crate) launcher_width_input: Signal<String>,
+    pub(crate) launcher_height_input: Signal<String>,
+    pub(crate) launcher_width_slider: Signal<f32>,
+    pub(crate) launcher_height_slider: Signal<f32>,
+    pub(crate) launcher_preview_text: Signal<String>,
+    pub(crate) smooth_caret: Signal<bool>,
+    pub(crate) caret_duration: Signal<String>,
+    pub(crate) settings_visible: Signal<bool>,
+    pub(crate) show_results: Signal<bool>,
+    pub(crate) window_size: windui::app::WindowSizeHandle,
+    pub(crate) window_position: windui::app::WindowPositionHandle,
+}
+
+pub(crate) fn visual_apply_button(context: VisualApplyContext) -> Element {
+    let VisualApplyContext {
+        i18n_hub,
+        settings,
+        launcher_width,
+        launcher_height,
+        launcher_width_input,
+        launcher_height_input,
+        launcher_width_slider,
+        launcher_height_slider,
+        launcher_preview_text,
+        smooth_caret,
+        caret_duration,
+        settings_visible,
+        show_results,
+        window_size,
+        window_position,
+    } = context;
+
+    Element::button(i18n_hub.tr(|| t!("settings.visual.apply").into_owned())).on_click(move |ctx| {
+        let mut width = crate::parse_dimension_input(
+            &launcher_width_input.get(),
+            flux_core::MIN_LAUNCHER_WIDTH,
+            flux_core::MAX_LAUNCHER_WIDTH,
+        )
+        .unwrap_or(flux_core::DEFAULT_LAUNCHER_WIDTH);
+        let mut height = crate::parse_dimension_input(
+            &launcher_height_input.get(),
+            flux_core::MIN_LAUNCHER_HEIGHT,
+            flux_core::MAX_LAUNCHER_HEIGHT,
+        )
+        .unwrap_or(flux_core::DEFAULT_LAUNCHER_HEIGHT);
+        let duration = caret_duration
+            .get()
+            .trim()
+            .parse::<u16>()
+            .unwrap_or(95)
+            .clamp(60, 160);
+        let Ok(mut settings) = settings.write() else {
+            ctx.toast_ok(t!("settings.lock_failed"));
+            return;
+        };
+        settings.launcher_width = width;
+        settings.launcher_height = height;
+        settings.smooth_caret = smooth_caret.get();
+        settings.smooth_caret_duration_ms = duration;
+        settings.normalize();
+        width = settings.launcher_width;
+        height = settings.launcher_height;
+        let preference = settings.monitor_preference;
+        if !crate::settings_state::save_settings(&settings) {
+            ctx.toast_ok(t!("settings.visual.save_failed"));
+            return;
+        }
+        launcher_width.set(width);
+        launcher_height.set(height);
+        launcher_width_input.set(width.to_string());
+        launcher_height_input.set(height.to_string());
+        launcher_width_slider.set(crate::dimension_slider_fraction(
+            width,
+            flux_core::MIN_LAUNCHER_WIDTH,
+            flux_core::MAX_LAUNCHER_WIDTH,
+        ));
+        launcher_height_slider.set(crate::dimension_slider_fraction(
+            height,
+            flux_core::MIN_LAUNCHER_HEIGHT,
+            flux_core::MAX_LAUNCHER_HEIGHT,
+        ));
+        launcher_preview_text.set(
+            t!(
+                "settings.visual.client_area",
+                width = width,
+                height = height
+            )
+            .into_owned(),
+        );
+        eprintln!("Visual Apply dimensions clicked: {}x{}", width, height);
+        settings_visible.set(false);
+        let target_height = if show_results.get() {
+            i32::from(height)
+        } else {
+            crate::COMPACT_WINDOW_HEIGHT
+        };
+        crate::window_state::request_monitor_position(
+            &window_position,
+            preference,
+            i32::from(width),
+            target_height,
+        );
+        window_size.set(i32::from(width), target_height);
+        ctx.show_window();
+        ctx.toast_ok(t!("settings.visual.applied"));
+    })
+}
+
 impl SettingsUiState {
     pub(crate) fn new(visible: Signal<bool>, tab: Signal<usize>) -> Self {
         Self { visible, tab }

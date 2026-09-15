@@ -1411,11 +1411,6 @@ fn main() {
 
     let visual_preview_generation_for_width_reset = visual_preview_generation;
     let visual_preview_generation_for_height_reset = visual_preview_generation;
-    let settings_for_visual_apply = Arc::clone(&shared_settings);
-    let size_for_visual_apply = window_size.clone();
-    let position_for_visual_apply = window_position.clone();
-    let settings_visible_for_visual_apply = settings_visible;
-    let show_results_for_visual_apply = show_results;
 
     // Settings shares the same continuous Acrylic surface as the launcher.
     // Do not add a dark card here: it hides the blur and creates the old opaque
@@ -2226,85 +2221,25 @@ fn main() {
                             .max_lines(2)
                             .truncate(Truncate::End),
                         )
-                        .child(
-                            Element::button(
-                                i18n_hub.tr(|| t!("settings.visual.apply").into_owned()),
-                            )
-                            .on_click(move |ctx| {
-                                let mut width = parse_dimension_input(
-                                    &launcher_width_input.get(),
-                                    MIN_LAUNCHER_WIDTH,
-                                    MAX_LAUNCHER_WIDTH,
-                                )
-                                .unwrap_or(DEFAULT_LAUNCHER_WIDTH);
-                                let mut height = parse_dimension_input(
-                                    &launcher_height_input.get(),
-                                    MIN_LAUNCHER_HEIGHT,
-                                    MAX_LAUNCHER_HEIGHT,
-                                )
-                                .unwrap_or(DEFAULT_LAUNCHER_HEIGHT);
-                                let duration = caret_duration
-                                    .get()
-                                    .trim()
-                                    .parse::<u16>()
-                                    .unwrap_or(95)
-                                    .clamp(60, 160);
-                                let Ok(mut settings) = settings_for_visual_apply.write() else {
-                                    ctx.toast_ok(t!("settings.lock_failed"));
-                                    return;
-                                };
-                                settings.launcher_width = width;
-                                settings.launcher_height = height;
-                                settings.smooth_caret = smooth_caret.get();
-                                settings.smooth_caret_duration_ms = duration;
-                                settings.normalize();
-                                width = settings.launcher_width;
-                                height = settings.launcher_height;
-                                let preference = settings.monitor_preference;
-                                if !save_settings(&settings) {
-                                    ctx.toast_ok(t!("settings.visual.save_failed"));
-                                    return;
-                                }
-                                launcher_width.set(width);
-                                launcher_height.set(height);
-                                launcher_width_input.set(width.to_string());
-                                launcher_height_input.set(height.to_string());
-                                launcher_width_slider.set(dimension_slider_fraction(
-                                    width,
-                                    MIN_LAUNCHER_WIDTH,
-                                    MAX_LAUNCHER_WIDTH,
-                                ));
-                                launcher_height_slider.set(dimension_slider_fraction(
-                                    height,
-                                    MIN_LAUNCHER_HEIGHT,
-                                    MAX_LAUNCHER_HEIGHT,
-                                ));
-                                launcher_preview_text.set(
-                                    t!(
-                                        "settings.visual.client_area",
-                                        width = width,
-                                        height = height
-                                    )
-                                    .into_owned(),
-                                );
-                                eprintln!("Visual Apply dimensions clicked: {}x{}", width, height);
-                                settings_visible_for_visual_apply.set(false);
-                                let target_height = if show_results_for_visual_apply.get() {
-                                    i32::from(height)
-                                } else {
-                                    COMPACT_WINDOW_HEIGHT
-                                };
-                                request_monitor_position(
-                                    &position_for_visual_apply,
-                                    preference,
-                                    i32::from(width),
-                                    target_height,
-                                );
-                                size_for_visual_apply.set(i32::from(width), target_height);
-                                ctx.show_window();
-                                ctx.toast_ok(t!("settings.visual.applied"));
-                            }),
-                        ),
+                        .child(settings_view::visual_apply_button(
+                            settings_view::VisualApplyContext {
+                                i18n_hub: i18n_hub.clone(),
+                                settings: Arc::clone(&shared_settings),
+                                launcher_width,
+                                launcher_height,
+                                launcher_width_input,
+                                launcher_height_input,
+                                launcher_width_slider,
+                                launcher_height_slider,
+                                launcher_preview_text,
+                                smooth_caret,
+                                caret_duration,
+                                settings_visible,
+                                show_results,
+                                window_size: window_size.clone(),
+                                window_position: window_position.clone(),
+                            },
+                        )),
                 ),
         )
         .child(
