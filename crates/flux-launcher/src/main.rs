@@ -19,6 +19,7 @@ mod interval_state;
 mod keyboard;
 mod keyboard_layout;
 mod launch;
+mod launcher_dialogs;
 mod monitor;
 mod native_host;
 mod plugin_limits;
@@ -604,126 +605,20 @@ fn main() {
         .child(result_list_body)
         .visible_when(move || show_results.get() && !action_mode.get());
 
-    let everything_prompt_for_close = everything_prompt_visible;
-    let everything_prompt_for_decline = everything_prompt_visible;
-    let everything_prompt_for_install = everything_prompt_visible;
-    let everything_status_for_prompt = everything_status;
-    let settings_for_everything_prompt_close = Arc::clone(&shared_settings);
-    let settings_for_everything_prompt_decline = Arc::clone(&shared_settings);
-    let settings_for_everything_prompt_install = Arc::clone(&shared_settings);
-    let everything_install_prompt = Element::dialog_glass_panel(
-        everything_prompt_visible,
-        t!("everything.install").into_owned(),
-        400,
-        move |_| {
-            everything_prompt_for_close.set(false);
-            if let Ok(mut settings) = settings_for_everything_prompt_close.write() {
-                settings.everything_install_prompt_seen = true;
-                let _ = save_settings(&settings);
-            }
+    let everything_install_prompt = launcher_dialogs::everything_install_prompt(
+        launcher_dialogs::EverythingInstallPromptContext {
+            visible: everything_prompt_visible,
+            status: everything_status,
+            settings: Arc::clone(&shared_settings),
+            i18n_hub: i18n_hub.clone(),
         },
-        Element::col()
-            .spacing(10)
-            .child(
-                Element::label(
-                    i18n_hub.tr(|| t!("everything.prompt_install_question").into_owned()),
-                )
-                .font_size(13.0)
-                .fg(Color::rgba(245, 248, 255, 245)),
-            )
-            .child(
-                Element::label(i18n_hub.tr(|| t!("everything.prompt_winget_command").into_owned()))
-                    .font_size(11.0)
-                    .fg(Color::rgba(235, 241, 255, 180))
-                    .max_lines(2)
-                    .truncate(Truncate::End),
-            ),
-        Element::row()
-            .width_match()
-            .spacing(8)
-            .child(Element::flex_spacer())
-            .child(
-                Element::button(i18n_hub.tr(|| t!("everything.not_now").into_owned()))
-                    .neutral()
-                    .outline_soft()
-                    .on_click(move |_| {
-                        everything_prompt_for_decline.set(false);
-                        if let Ok(mut settings) = settings_for_everything_prompt_decline.write() {
-                            settings.everything_install_prompt_seen = true;
-                            let _ = save_settings(&settings);
-                        }
-                    }),
-            )
-            .child(
-                Element::button(i18n_hub.tr(|| t!("everything.install").into_owned())).on_click(
-                    move |ctx| {
-                        everything_prompt_for_install.set(false);
-                        if let Ok(mut settings) = settings_for_everything_prompt_install.write() {
-                            settings.everything_install_prompt_seen = true;
-                            let _ = save_settings(&settings);
-                        }
-                        match everything::launch_winget_install() {
-                            Ok(()) => {
-                                everything_status_for_prompt
-                                    .set(t!("everything.install_started").into_owned());
-                                ctx.toast_ok(t!("everything.install_started_toast"));
-                            }
-                            Err(error) => {
-                                everything_status_for_prompt.set(error.clone());
-                                ctx.toast_ok(error);
-                            }
-                        }
-                    },
-                ),
-            )
-            .padding_edges(0, 0, 0, 12),
     );
-
-    let confirmation_for_close = recycle_bin_confirmation;
-    let confirmation_for_cancel = recycle_bin_confirmation;
-    let confirmation_for_empty = recycle_bin_confirmation;
-    let status_for_confirmation = status;
-    let recycle_bin_dialog = Element::dialog_panel(
-        recycle_bin_confirmation,
-        t!("recycle_bin.title").into_owned(),
-        360,
-        move |_| confirmation_for_close.set(false),
-        Element::col()
-            .spacing(8)
-            .child(
-                Element::label(i18n_hub.tr(|| t!("recycle_bin.warning").into_owned()))
-                    .font_size(13.0)
-                    .fg(Color::rgba(245, 248, 255, 245)),
-            )
-            .child(
-                Element::label(t!("recycle_bin.irreversible"))
-                    .font_size(12.0)
-                    .fg(Color::rgba(255, 190, 190, 235)),
-            ),
-        Element::row()
-            .width_match()
-            .spacing(8)
-            .child(Element::flex_spacer())
-            .child(
-                Element::button(t!("common.cancel"))
-                    .neutral()
-                    .outline_soft()
-                    .on_click(move |_| confirmation_for_cancel.set(false)),
-            )
-            .child(
-                Element::button(t!("recycle_bin.title"))
-                    .danger()
-                    .on_click(move |_| {
-                        confirmation_for_empty.set(false);
-                        if launch::empty_recycle_bin() {
-                            status_for_confirmation.set(t!("recycle_bin.emptied").into_owned());
-                        } else {
-                            status_for_confirmation
-                                .set(t!("recycle_bin.empty_failed").into_owned());
-                        }
-                    }),
-            ),
-    );
+    let recycle_bin_dialog =
+        launcher_dialogs::recycle_bin_dialog(launcher_dialogs::RecycleBinDialogContext {
+            visible: recycle_bin_confirmation,
+            status,
+            i18n_hub: i18n_hub.clone(),
+        });
 
     let action_list = action_panel::action_list(action_panel::ActionListContext {
         action_items: action_items_for_rows,

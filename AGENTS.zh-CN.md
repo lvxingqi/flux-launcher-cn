@@ -32,6 +32,7 @@ Flux 使用 `rust-i18n` 框架处理所有面向用户的字符串。翻译文�
 工具失败与 Cline 内置工具规则：
 
 - `AGENTS.md` 和 `AGENTS.zh-CN.md` 是同一规则的中英文版本。任何仓库级规则变更，必须同时修改两个文件，并保持语义一致。
+- `apply_patch` 工具已在本仓库禁用。后续任务不得调用 `apply_patch`，应改用其他可用的编辑工具。
 - 仅在确认 Cline 内置工具不可用，或同一操作连续失败后，才允许将该工具加入 `.vscode/settings.json` 的 `cline.disabledTools`。单次、临时或无关错误不得禁用工具。`github`、`desktop-commander`、`serena` 的失败不属于 Cline 内置工具失败。
 - 任何工具出现失败、超时、异常返回或部分状态变更，必须及时在 `doc/question/` 创建或更新中文 Markdown 报告，记录：时间、工具/服务端、操作、影响、原始错误或日志、诊断、恢复措施、验证结果。
 

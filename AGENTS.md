@@ -33,6 +33,7 @@ Tool failure and Cline built-in tool policy:
 
 - `AGENTS.md` and `AGENTS.zh-CN.md` are the English and Simplified Chinese versions of the same rules. Update both in the same change and keep their requirements semantically equivalent.
 - Add a tool to `cline.disabledTools` only after confirming that the Cline built-in tool is unavailable or repeatedly fails the same operation. Do not disable tools for a single transient or unrelated error.
+- The `apply_patch` tool is disabled for this repository. Do not call `apply_patch` in future tasks; use another available editing tool instead.
 - Distinguish Cline built-in tools from MCP tools. Failures of `github`, `desktop-commander`, or `serena` do not justify disabling a Cline built-in tool.
 - For any tool failure, timeout, unexpected result, or partial state change, promptly create or update a Chinese Markdown report under `doc/question/`. Include the time, tool/server, operation, impact, original error or log excerpt, diagnosis, recovery, and validation. English technical terms and original English logs may be retained.
 - Preserve the original error text when possible. If the failure is transient or environmental, document the conclusion and its basis; do not silently retry and discard the first failure.
