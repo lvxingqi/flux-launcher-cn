@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use crate::i18n::I18nHub;
 use crate::plugins::native_plugin_install_path;
 use crate::query::ProviderResults;
+use crate::settings_state::save_settings;
 use crate::ui_helpers::priority_row;
 use flux_core::{PriorityEntry, SearchResult, Settings};
 use windui::prelude::*;
@@ -225,6 +226,135 @@ pub(crate) fn visual_apply_button(context: VisualApplyContext) -> Element {
         ctx.show_window();
         ctx.toast_ok(t!("settings.visual.applied"));
     })
+}
+
+pub(crate) struct EverythingSettingsContext {
+    pub(crate) i18n_hub: I18nHub,
+    pub(crate) settings: Arc<RwLock<Settings>>,
+    pub(crate) auto_enable: Signal<bool>,
+    pub(crate) installed: Signal<bool>,
+    pub(crate) status: Signal<String>,
+    pub(crate) obsidian_enabled: Signal<bool>,
+    pub(crate) obsidian_alias: Signal<String>,
+    pub(crate) google_enabled: Signal<bool>,
+    pub(crate) google_alias: Signal<String>,
+}
+
+pub(crate) fn everything_settings(context: EverythingSettingsContext) -> Element {
+    let EverythingSettingsContext {
+        i18n_hub,
+        settings,
+        auto_enable,
+        installed,
+        status,
+        obsidian_enabled,
+        obsidian_alias,
+        google_enabled,
+        google_alias,
+    } = context;
+    let settings_for_toggle = Arc::clone(&settings);
+    let auto_enable_for_toggle = auto_enable;
+    let installed_for_toggle = installed;
+    let status_for_toggle = status;
+    let installed_for_ui = installed;
+    let status_for_install = status;
+
+    Element::col()
+        .width_match()
+        .spacing(12)
+        .child(
+            Element::label(i18n_hub.tr(|| t!("settings.everything").into_owned()))
+                .font_size(17.0)
+                .fg(Color::WHITE),
+        )
+        .child(
+            Element::label(i18n_hub.tr(|| t!("settings.everything_tab_desc").into_owned()))
+                .font_size(11.0)
+                .fg(Color::rgba(235, 241, 255, 180))
+                .max_lines(3)
+                .truncate(Truncate::End),
+        )
+        .child(Element::field_signal(
+            i18n_hub.tr(|| t!("settings.everything").into_owned()),
+            Element::checkbox(
+                i18n_hub.tr(|| t!("settings.everything_desc").into_owned()),
+                auto_enable,
+            )
+            .on_toggle(move |_| {
+                let enabled = auto_enable_for_toggle.get();
+                if let Ok(mut settings) = settings_for_toggle.write() {
+                    settings.auto_enable_everything = enabled;
+                    settings.normalize();
+                    let _ = save_settings(&settings);
+                }
+                if !enabled {
+                    status_for_toggle.set(t!("everything.auto_enable_disabled").into_owned());
+                    return;
+                }
+                match crate::everything::start_background_if_installed() {
+                    Ok(crate::everything::InstallationState::Installed(_)) => {
+                        installed_for_toggle.set(true);
+                        status_for_toggle.set(t!("everything.detected_enable_ipc").into_owned());
+                    }
+                    Ok(crate::everything::InstallationState::Missing) => {
+                        installed_for_toggle.set(false);
+                        status_for_toggle.set(t!("everything.not_installed_winget").into_owned());
+                    }
+                    Err(error) => status_for_toggle.set(error),
+                }
+            }),
+        ))
+        .child(
+            Element::label(i18n_hub.tr(|| t!("everything.is_installed").into_owned()))
+                .font_size(12.0)
+                .fg(Color::rgba(180, 255, 205, 235))
+                .visible_when(move || installed_for_ui.get()),
+        )
+        .child(
+            Element::label(i18n_hub.tr(|| t!("everything.is_not_installed").into_owned()))
+                .font_size(12.0)
+                .fg(Color::rgba(255, 225, 175, 235))
+                .visible_when(move || !installed.get()),
+        )
+        .child(
+            Element::label_signal(status)
+                .font_size(11.0)
+                .fg(Color::rgba(235, 241, 255, 190))
+                .max_lines(2)
+                .truncate(Truncate::End)
+                .width_match(),
+        )
+        .child(
+            Element::label(i18n_hub.tr(|| t!("settings.everything_command").into_owned()))
+                .font_size(10.0)
+                .fg(Color::rgba(235, 241, 255, 155))
+                .visible_when(move || !installed_for_ui.get())
+                .width_match(),
+        )
+        .child(
+            Element::button(i18n_hub.tr(|| t!("everything.install").into_owned()))
+                .visible_when(move || !installed_for_ui.get())
+                .on_click(
+                    move |ctx| match crate::everything::launch_winget_install() {
+                        Ok(()) => {
+                            status_for_install
+                                .set(t!("everything.winget_started_restart").into_owned());
+                            ctx.toast_ok(t!("everything.winget_started_toast"));
+                        }
+                        Err(error) => {
+                            status_for_install.set(error.clone());
+                            ctx.toast_ok(error);
+                        }
+                    },
+                ),
+        )
+        .child(plugin_settings(
+            i18n_hub,
+            obsidian_enabled,
+            obsidian_alias,
+            google_enabled,
+            google_alias,
+        ))
 }
 
 impl SettingsUiState {

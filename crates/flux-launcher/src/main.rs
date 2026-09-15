@@ -1300,7 +1300,6 @@ fn main() {
     let google_enabled_for_apply = google_enabled;
     let google_alias_for_apply = google_alias;
     let everything_status_for_apply = everything_status;
-    let everything_installed_for_ui = everything_installed;
     let cancel_settings = {
         let settings = Arc::clone(&shared_settings);
         let activation_handle = activation_handle.clone();
@@ -1396,10 +1395,6 @@ fn main() {
             window_size.set(i32::from(saved.launcher_width), target_height);
         }) as Rc<dyn Fn()>
     };
-    let settings_for_everything_toggle = Arc::clone(&shared_settings);
-    let auto_enable_everything_for_toggle = auto_enable_everything;
-    let everything_installed_for_toggle = everything_installed;
-    let everything_status_for_toggle = everything_status;
     let priority_list = settings_view::priority_list(
         priorities,
         results,
@@ -1943,115 +1938,19 @@ fn main() {
             Element::scroll()
                 .weight(1.0)
                 .visible_when(move || settings_tab.get() == 3)
-                .child(
-                    Element::col()
-                        .width_match()
-                        .spacing(12)
-                        .child(
-                            Element::label(i18n_hub.tr(|| t!("settings.everything").into_owned()))
-                                .font_size(17.0)
-                                .fg(Color::WHITE),
-                        )
-                        .child(
-                            Element::label(
-                                i18n_hub.tr(|| t!("settings.everything_tab_desc").into_owned()),
-                            )
-                            .font_size(11.0)
-                            .fg(Color::rgba(235, 241, 255, 180))
-                            .max_lines(3)
-                            .truncate(Truncate::End),
-                        )
-                        .child(Element::field_signal(
-                            i18n_hub.tr(|| t!("settings.everything").into_owned()),
-                            Element::checkbox(
-                                i18n_hub.tr(|| t!("settings.everything_desc").into_owned()),
-                                auto_enable_everything,
-                            )
-                            .on_toggle(move |_| {
-                                let enabled = auto_enable_everything_for_toggle.get();
-                                if let Ok(mut settings) = settings_for_everything_toggle.write() {
-                                    settings.auto_enable_everything = enabled;
-                                    settings.normalize();
-                                    let _ = save_settings(&settings);
-                                }
-                                if !enabled {
-                                    everything_status_for_toggle
-                                        .set(t!("everything.auto_enable_disabled").into_owned());
-                                    return;
-                                }
-                                match everything::start_background_if_installed() {
-                                    Ok(InstallationState::Installed(_)) => {
-                                        everything_installed_for_toggle.set(true);
-                                        everything_status_for_toggle
-                                            .set(t!("everything.detected_enable_ipc").into_owned());
-                                    }
-                                    Ok(InstallationState::Missing) => {
-                                        everything_installed_for_toggle.set(false);
-                                        everything_status_for_toggle.set(
-                                            t!("everything.not_installed_winget").into_owned(),
-                                        );
-                                    }
-                                    Err(error) => everything_status_for_toggle.set(error),
-                                }
-                            }),
-                        ))
-                        .child(
-                            Element::label(
-                                i18n_hub.tr(|| t!("everything.is_installed").into_owned()),
-                            )
-                            .font_size(12.0)
-                            .fg(Color::rgba(180, 255, 205, 235))
-                            .visible_when(move || everything_installed_for_ui.get()),
-                        )
-                        .child(
-                            Element::label(
-                                i18n_hub.tr(|| t!("everything.is_not_installed").into_owned()),
-                            )
-                            .font_size(12.0)
-                            .fg(Color::rgba(255, 225, 175, 235))
-                            .visible_when(move || !everything_installed_for_ui.get()),
-                        )
-                        .child(
-                            Element::label_signal(everything_status)
-                                .font_size(11.0)
-                                .fg(Color::rgba(235, 241, 255, 190))
-                                .max_lines(2)
-                                .truncate(Truncate::End)
-                                .width_match(),
-                        )
-                        .child(
-                            Element::label(
-                                i18n_hub.tr(|| t!("settings.everything_command").into_owned()),
-                            )
-                            .font_size(10.0)
-                            .fg(Color::rgba(235, 241, 255, 155))
-                            .visible_when(move || !everything_installed_for_ui.get())
-                            .width_match(),
-                        )
-                        .child(
-                            Element::button(i18n_hub.tr(|| t!("everything.install").into_owned()))
-                                .visible_when(move || !everything_installed_for_ui.get())
-                                .on_click(move |ctx| match everything::launch_winget_install() {
-                                    Ok(()) => {
-                                        everything_status.set(
-                                            t!("everything.winget_started_restart").into_owned(),
-                                        );
-                                        ctx.toast_ok(t!("everything.winget_started_toast"));
-                                    }
-                                    Err(error) => {
-                                        everything_status.set(error.clone());
-                                        ctx.toast_ok(error);
-                                    }
-                                }),
-                        )
-                        .child(settings_view::plugin_settings(
-                            i18n_hub.clone(),
-                            obsidian_enabled,
-                            obsidian_alias,
-                            google_enabled,
-                            google_alias,
-                        )),
-                ),
+                .child(settings_view::everything_settings(
+                    settings_view::EverythingSettingsContext {
+                        i18n_hub: i18n_hub.clone(),
+                        settings: Arc::clone(&shared_settings),
+                        auto_enable: auto_enable_everything,
+                        installed: everything_installed,
+                        status: everything_status,
+                        obsidian_enabled,
+                        obsidian_alias,
+                        google_enabled,
+                        google_alias,
+                    },
+                )),
         )
         .child(
             Element::scroll()
