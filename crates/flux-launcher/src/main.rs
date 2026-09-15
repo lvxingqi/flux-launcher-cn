@@ -75,9 +75,7 @@ pub(crate) use query::should_publish_initial_query_results;
 use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
-use ui_helpers::{
-    action_bar_content, priorities_empty, priority_row, selection_color_hex, selection_palette,
-};
+use ui_helpers::{action_bar_content, priorities_empty, selection_color_hex, selection_palette};
 use update_state::{
     maybe_request_update_check, register_update_channels, request_update_check,
     request_update_install, update_check_due,
@@ -1402,29 +1400,12 @@ fn main() {
     let auto_enable_everything_for_toggle = auto_enable_everything;
     let everything_installed_for_toggle = everything_installed;
     let everything_status_for_toggle = everything_status;
-    let settings_for_priority_ui = Arc::clone(&shared_settings);
-    let providers_for_priority_ui = Rc::clone(&provider_results);
-    let query_for_priority_ui = query;
-    let priority_list = Element::list_signal(
+    let priority_list = settings_view::priority_list(
         priorities,
-        |entry| entry.id.clone(),
-        move |entry| {
-            let rank = priorities
-                .get()
-                .iter()
-                .position(|candidate| candidate.id == entry.id)
-                .map(|index| index + 1)
-                .unwrap_or_default();
-            priority_row(
-                &entry,
-                rank,
-                priorities,
-                results,
-                Rc::clone(&providers_for_priority_ui),
-                query_for_priority_ui,
-                Arc::clone(&settings_for_priority_ui),
-            )
-        },
+        results,
+        Rc::clone(&provider_results),
+        query,
+        Arc::clone(&shared_settings),
     );
     let priorities_empty = priorities_empty(priorities);
 

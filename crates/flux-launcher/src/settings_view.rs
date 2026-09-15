@@ -1,7 +1,12 @@
+use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use crate::i18n::I18nHub;
 use crate::plugins::native_plugin_install_path;
+use crate::query::ProviderResults;
+use crate::ui_helpers::priority_row;
+use flux_core::{PriorityEntry, SearchResult, Settings};
 use windui::prelude::*;
 
 /// Shared reactive state for the Settings surface.
@@ -9,6 +14,36 @@ use windui::prelude::*;
 pub(crate) struct SettingsUiState {
     pub(crate) visible: Signal<bool>,
     pub(crate) tab: Signal<usize>,
+}
+
+pub(crate) fn priority_list(
+    priorities: Signal<Vec<PriorityEntry>>,
+    results: Signal<Vec<SearchResult>>,
+    providers: Rc<RefCell<ProviderResults>>,
+    query: Signal<String>,
+    settings: Arc<RwLock<Settings>>,
+) -> Element {
+    Element::list_signal(
+        priorities,
+        |entry| entry.id.clone(),
+        move |entry| {
+            let rank = priorities
+                .get()
+                .iter()
+                .position(|candidate| candidate.id == entry.id)
+                .map(|index| index + 1)
+                .unwrap_or_default();
+            priority_row(
+                &entry,
+                rank,
+                priorities,
+                results,
+                Rc::clone(&providers),
+                query,
+                Arc::clone(&settings),
+            )
+        },
+    )
 }
 
 impl SettingsUiState {
