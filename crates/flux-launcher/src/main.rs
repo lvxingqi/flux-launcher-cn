@@ -5,6 +5,7 @@ extern crate rust_i18n;
 i18n!("locales", fallback = "en");
 
 mod accent;
+mod action_panel;
 mod actions;
 mod applications;
 mod builtin;
@@ -74,8 +75,7 @@ use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
 use ui_helpers::{
-    action_bar_content, action_row, priorities_empty, priority_row, selection_color_hex,
-    selection_palette,
+    action_bar_content, priorities_empty, priority_row, selection_color_hex, selection_palette,
 };
 use update_state::{
     maybe_request_update_check, register_update_channels, request_update_check,
@@ -527,7 +527,6 @@ fn main() {
     let action_items_for_rows = action_items;
     let action_index_for_rows = action_index;
     let action_mode_for_rows = action_mode;
-    let action_window_slot_for_rows = Rc::clone(&action_window_slot);
     let launcher_width_for_rows = launcher_width;
     let query_for_rows = query;
     let scroll_request_for_rows = signal(false);
@@ -726,39 +725,22 @@ fn main() {
             ),
     );
 
-    let shared_settings_for_action_list = Arc::clone(&shared_settings);
-    let provider_results_for_action_list = Rc::clone(&provider_results);
-    let action_list = Element::list_signal(
-        action_items_for_rows,
-        |item| item.id.clone(),
-        move |item| {
-            let item_index = action_items_for_rows
-                .get()
-                .iter()
-                .position(|candidate| candidate.id == item.id)
-                .unwrap_or_default();
-            action_row(
-                &item,
-                item_index,
-                action_index_for_rows,
-                action_scroll_pending,
-                result_source,
-                selected_for_rows,
-                selected_index_for_rows,
-                action_mode_for_rows,
-                launcher_width_for_rows,
-                launcher_height,
-                action_window_slot_for_rows.clone(),
-                Arc::clone(&shared_settings_for_action_list),
-                priorities,
-                Rc::clone(&provider_results_for_action_list),
-                query,
-            )
-        },
-    )
-    .height(174)
-    .corner(12.0)
-    .visible_signal(action_mode);
+    let action_list = action_panel::action_list(action_panel::ActionListContext {
+        action_items: action_items_for_rows,
+        action_index: action_index_for_rows,
+        action_scroll_pending,
+        result_source,
+        selected_id: selected_for_rows,
+        selected_index: selected_index_for_rows,
+        action_mode: action_mode_for_rows,
+        launcher_width: launcher_width_for_rows,
+        launcher_height,
+        action_window_slot: Rc::clone(&action_window_slot),
+        settings: Arc::clone(&shared_settings),
+        priorities,
+        provider_results: Rc::clone(&provider_results),
+        query,
+    });
 
     // The HWND itself owns the system Acrylic surface. Keep this root transparent so
     // the blur fills the complete client area instead of becoming an inset card. The
