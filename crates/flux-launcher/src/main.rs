@@ -77,7 +77,8 @@ use ui_helpers::{
     selection_palette,
 };
 use update_state::{
-    register_update_channels, request_update_check, request_update_install, update_check_due,
+    maybe_request_update_check, register_update_channels, request_update_check,
+    request_update_install, update_check_due,
 };
 use window_state::{
     apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
@@ -2889,18 +2890,11 @@ fn main() {
             }
 
             if let Ok(settings) = settings_for_update_interval.read() {
-                let update_checks_allowed = std::env::var("FLUX_DISABLE_UPDATE_CHECKS")
-                    .map(|value| value != "1")
-                    .unwrap_or(true);
-                if update_checks_allowed
-                    && settings.update_checks_enabled
-                    && update_check_due(&settings)
-                {
-                    request_update_check(
-                        update_sender_for_interval.clone(),
-                        &update_check_in_flight_for_interval,
-                    );
-                }
+                maybe_request_update_check(
+                    &settings,
+                    update_sender_for_interval.clone(),
+                    &update_check_in_flight_for_interval,
+                );
             }
             let completed_icon_generation =
                 SHELL_ICON_COMPLETION_GENERATION.load(Ordering::Acquire);

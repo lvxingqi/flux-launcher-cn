@@ -178,6 +178,20 @@ pub(crate) fn request_update_check(
     true
 }
 
+pub(crate) fn maybe_request_update_check(
+    settings: &Settings,
+    sender: Sender<crate::updater::UpdateCheckResponse>,
+    in_flight: &Cell<bool>,
+) -> bool {
+    let update_checks_allowed = std::env::var("FLUX_DISABLE_UPDATE_CHECKS")
+        .map(|value| value != "1")
+        .unwrap_or(true);
+    update_checks_allowed
+        && settings.update_checks_enabled
+        && update_check_due(settings)
+        && request_update_check(sender, in_flight)
+}
+
 fn spawn_update_check(sender: Sender<crate::updater::UpdateCheckResponse>) {
     let _ = std::thread::Builder::new()
         .name(String::from("flux-update-check"))
