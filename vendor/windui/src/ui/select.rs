@@ -184,10 +184,12 @@ enum OptionSource {
     Rich(Options<DropdownItem>),
 }
 
+type DropdownChangeHandler = Rc<dyn Fn(&mut EventCtx, usize)>;
+
 pub struct Dropdown {
     options: OptionSource,
     selected: Signal<usize>,
-    on_change: Option<Rc<dyn Fn(&mut EventCtx, usize)>>,
+    on_change: Option<DropdownChangeHandler>,
     hover: bool,
     /// 边框色补间（hover/focus 高亮淡变）；首帧靠 `primed` 落定。
     border_anim: Cell<Transition<Color>>,
