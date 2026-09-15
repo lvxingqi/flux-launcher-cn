@@ -66,11 +66,14 @@ pub(crate) fn configured_locale(language: Language) -> String {
     }
 }
 
+type LocalizedSignal = (Box<dyn Fn() -> String>, Signal<String>);
+type LocalizedVecSignal = (Box<dyn Fn() -> Vec<String>>, Signal<Vec<String>>);
+
 /// Reactive manager for localized string signals that update when locale changes.
 #[derive(Clone)]
 pub(crate) struct I18nHub {
-    signals: Rc<RefCell<Vec<(Box<dyn Fn() -> String>, Signal<String>)>>>,
-    vec_signals: Rc<RefCell<Vec<(Box<dyn Fn() -> Vec<String>>, Signal<Vec<String>>)>>>,
+    signals: Rc<RefCell<Vec<LocalizedSignal>>>,
+    vec_signals: Rc<RefCell<Vec<LocalizedVecSignal>>>,
 }
 
 impl I18nHub {

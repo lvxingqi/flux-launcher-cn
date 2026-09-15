@@ -237,6 +237,7 @@ pub(crate) fn handle_run_as_admin_shortcut(
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_action_entry(
     query: Signal<String>,
     query_caret_position: Signal<usize>,

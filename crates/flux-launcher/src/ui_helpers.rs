@@ -199,6 +199,7 @@ pub(crate) fn priorities_empty(priorities: Signal<Vec<PriorityEntry>>) -> Elemen
         .visible_when(move || priorities.get().is_empty())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn action_row(
     item: &ActionItem,
     item_index: usize,
