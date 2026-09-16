@@ -16,12 +16,12 @@ if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
     $ReleaseTag = "v$Version"
 }
 
-$packageIdentifier = "m1nuzz.FluxLauncher"
-$publisher = "m1nuzz"
+$packageIdentifier = "lvxingqi.FluxLauncherCN"
+$publisher = "lvxingqi"
 $packageName = "FluxLauncher"
-$packageDirectory = Join-Path $repoRoot (Join-Path $OutputRoot (Join-Path "m/m1nuzz/FluxLauncher" $Version))
-$installerUrl = "https://github.com/m1nuzz/flux-launcher/releases/download/$ReleaseTag/FluxLauncher-Setup.exe"
-$releaseUrl = "https://github.com/m1nuzz/flux-launcher/releases/tag/$ReleaseTag"
+$packageDirectory = Join-Path $repoRoot (Join-Path $OutputRoot (Join-Path "l/lvxingqi/FluxLauncherCN" $Version))
+$installerUrl = "https://github.com/lvxingqi/flux-launcher-cn/releases/download/$ReleaseTag/FluxLauncher-Setup.exe"
+$releaseUrl = "https://github.com/lvxingqi/flux-launcher-cn/releases/tag/$ReleaseTag"
 $schemaBase = "https://aka.ms/winget-manifest"
 
 function Write-Utf8NoBom {
@@ -33,7 +33,8 @@ function Write-Utf8NoBom {
     )
 
     $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+    $normalizedContent = $Content.Replace("`r`n", "`n").Replace("`r", "`n")
+    [System.IO.File]::WriteAllText($Path, $normalizedContent, $encoding)
 }
 
 New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
@@ -56,15 +57,15 @@ $localeManifest = @"
 PackageIdentifier: $packageIdentifier
 PackageVersion: $Version
 PackageLocale: en-US
-Publisher: m1nuzz
-PublisherUrl: https://github.com/m1nuzz
-PublisherSupportUrl: https://github.com/m1nuzz/flux-launcher/issues
-PackageName: Flux Launcher
-PackageUrl: https://github.com/m1nuzz/flux-launcher
+Publisher: $publisher
+PublisherUrl: https://github.com/$publisher
+PublisherSupportUrl: https://github.com/lvxingqi/flux-launcher-cn/issues
+PackageName: Flux Launcher CN
+PackageUrl: https://github.com/lvxingqi/flux-launcher-cn
 License: MIT
-LicenseUrl: https://github.com/m1nuzz/flux-launcher/blob/main/LICENSE
+LicenseUrl: https://github.com/lvxingqi/flux-launcher-cn/blob/main/LICENSE
 ShortDescription: A lightweight native Windows 11 launcher and file search tool built with Rust and windui.
-Description: Flux Launcher is a keyboard-first Windows 11 launcher with a native Acrylic interface, Everything IPC file search, global hotkeys, built-in Google and Obsidian providers, legacy Flow plugin compatibility, and native Rust community plugins.
+Description: Flux Launcher CN is a keyboard-first Windows 11 launcher with a native Acrylic interface, Everything IPC file search, global hotkeys, built-in Google and Obsidian providers, legacy Flow plugin compatibility, and native Rust community plugins.
 Moniker: flux
 Tags:
   - launcher
@@ -100,8 +101,8 @@ Installers:
       SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
     UpgradeBehavior: install
     AppsAndFeaturesEntries:
-      - DisplayName: Flux Launcher $Version
-        Publisher: m1nuzz
+      - DisplayName: Flux Launcher CN
+        Publisher: $publisher
         DisplayVersion: $Version
         InstallerType: inno
 ManifestType: installer

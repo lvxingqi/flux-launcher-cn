@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$runValueName = "Flux Launcher"
+$runValueName = "Flux Launcher CN"
 
 Add-Type @"
 using System;
@@ -90,14 +90,15 @@ function Assert-InstallerConfiguration {
     $installerScript = Get-Content -Path $installerScriptPath -Raw
     $requiredDirectives = @(
         '[Tasks]',
-        'Name: "startup"; Description: "Start Flux Launcher automatically with Windows"; GroupDescription: "Windows startup:"',
+        'Name: "startup"; Description: "Start Flux Launcher CN automatically with Windows"; GroupDescription: "Windows startup:"',
         '[Run]',
-        'Filename: "{app}\{#AppExeName}"; Description: "Launch Flux Launcher now"; Flags: nowait postinstall skipifsilent',
+        'Filename: "{app}\{#AppExeName}"; Description: "Launch Flux Launcher CN now"; Flags: nowait postinstall skipifsilent',
         '[UninstallRun]',
         'Filename: "{app}\{#AppExeName}"; Parameters: "--shutdown"; Flags: waituntilterminated skipifdoesntexist; RunOnceId: "FluxLauncherShutdown"',
         '[UninstallDelete]',
         'Type: filesandordirs; Name: "{app}"',
         'Type: filesandordirs; Name: "{group}"',
+        'Type: filesandordirs; Name: "{userappdata}\FluxLauncherCN"',
         'Type: filesandordirs; Name: "{userappdata}\FluxLauncher"',
         'IconFilename: "{app}\flux-launcher.ico"; IconIndex: 0'
     )
@@ -128,7 +129,7 @@ function Assert-StartMenuShortcutIcon {
     )
 
     $startMenuRoot = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
-    $shortcut = Get-ChildItem -Path $startMenuRoot -Filter "Flux Launcher.lnk" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $shortcut = Get-ChildItem -Path $startMenuRoot -Filter "Flux Launcher CN.lnk" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $shortcut) {
         throw "Flux Launcher Start Menu shortcut was not created"
     }

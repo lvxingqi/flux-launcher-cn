@@ -96,6 +96,16 @@ jobs:
             }
 
             $manifests = Get-ChildItem $manifestRoot.FullName -Filter "*.yaml" -File
+            $expectedNames = @(
+              "lvxingqi.FluxLauncherCN.yaml",
+              "lvxingqi.FluxLauncherCN.locale.en-US.yaml",
+              "lvxingqi.FluxLauncherCN.installer.yaml"
+            )
+            $actualNames = @($manifests.Name | Sort-Object)
+
+            if (Compare-Object $expectedNames $actualNames) {
+              throw "目录 $($manifestRoot.FullName) 的 manifest 文件名不符合 lvxingqi.FluxLauncherCN。"
+            }
 
             foreach ($manifest in $manifests) {
               $content = Get-Content $manifest.FullName -Raw

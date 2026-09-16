@@ -1,9 +1,9 @@
-# Flux Launcher
+# Flux Launcher CN
 
-> **Compatibility notice:** Flux Launcher has currently been tested only on Windows 11. Other Windows versions have not been officially verified yet.
+> **Compatibility notice:** Flux Launcher CN has currently been tested only on Windows 11. Other Windows versions have not been officially verified yet.
 
 <p align="center">
-  <img src="assets/logotype.png" alt="Flux Launcher logo" width="520">
+  <img src="assets/logotype.png" alt="Flux Launcher CN logo" width="520">
 </p>
 
 <p align="center">
@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest"><img src="https://img.shields.io/github/v/release/m1nuzz/flux-launcher?label=latest%20release" alt="Latest release"></a>
+  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest"><img src="https://img.shields.io/github/v/release/lvxingqi/flux-launcher-cn?label=latest%20release" alt="Latest release"></a>
   <a href="https://github.com/lvxingqi/flux-launcher-cn/actions/workflows/ci.yml"><img src="https://github.com/lvxingqi/flux-launcher-cn/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
   <a href="https://github.com/lvxingqi/flux-launcher-cn/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f.svg" alt="MIT license"></a>
-  <a href="https://ko-fi.com/m1nuz"><img src="https://img.shields.io/badge/Support%20on-Ko--fi-ff5e5b?logo=ko-fi&logoColor=white" alt="Support Flux Launcher on Ko-fi"></a>
+  <a href="https://ko-fi.com/m1nuz"><img src="https://img.shields.io/badge/Support%20on-Ko--fi-ff5e5b?logo=ko-fi&logoColor=white" alt="Support Flux Launcher CN on Ko-fi"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust-orange.svg" alt="Built with Rust"></a>
 </p>
 
@@ -27,9 +27,9 @@
   · <a href="#build-from-source">Build</a>
 </p>
 
-**Flux Launcher** is a lightweight **Flow Launcher alternative for Windows 11**. It opens with `Alt+Space`, finds applications and files, understands Everything search syntax, launches web searches, supports Obsidian vaults, and remains compatible with native Flow Launcher executable plugins. The interface is built exclusively with **windui** and the Windows 11 Acrylic/DWM composition path. It does not use WebView, Electron, Tauri, or any browser engine.
+**Flux Launcher CN** is a lightweight **Flow Launcher alternative for Windows 11**. It opens with `Alt+Space`, finds applications and files, understands Everything search syntax, launches web searches, supports Obsidian vaults, and remains compatible with native Flow Launcher executable plugins. The interface is built exclusively with **windui** and the Windows 11 Acrylic/DWM composition path. It does not use WebView, Electron, Tauri, or any browser engine.
 
-## Why Flux Launcher
+## Why Flux Launcher CN
 
 Flux is designed for users who want a fast, keyboard-first Windows launcher with a native look, predictable resource usage, and a small distribution footprint.
 
@@ -45,12 +45,12 @@ Flux is designed for users who want a fast, keyboard-first Windows launcher with
 
 ## Install
 
-For most users, install Flux Launcher with the [latest Windows 11 installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe). The installer is the recommended option, registers Flux in Windows startup with **Start Flux Launcher automatically with Windows** enabled by default, and adds a Start Menu shortcut. The same setting can be changed later in `Settings > General > Windows startup`.
+For most users, install Flux Launcher CN with the [latest Windows 11 installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe). The installer is the recommended option, registers Flux in Windows startup with **Start Flux Launcher CN automatically with Windows** enabled by default, and adds a Start Menu shortcut. The same setting can be changed later in `Settings > General > Windows startup`.
 
 You can also install or upgrade Flux with WinGet:
 
 ```powershell
-winget install --id m1nuzz.FluxLauncher --exact
+winget install --id lvxingqi.FluxLauncherCN --exact
 ```
 
 If you do not want an installer, download the [latest portable build](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Portable.exe) and run it directly. Portable mode uses the same startup preference; disable `Start Flux automatically with Windows` in Settings if you do not want it registered.
@@ -171,24 +171,24 @@ The release workflow signs stable Windows artifacts only when the encrypted `WIN
 
 ## Project status
 
-Flux Launcher is actively developed. The `main` branch may contain improvements that have not yet been packaged into a stable release. Download the [latest installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe), or follow development in the [issue tracker](https://github.com/lvxingqi/flux-launcher-cn/issues).
+Flux Launcher CN is actively developed. The `main` branch may contain improvements that have not yet been packaged into a stable release. Download the [latest installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe), or follow development in the [issue tracker](https://github.com/lvxingqi/flux-launcher-cn/issues).
 
 ## Support
 
-Support Flux Launcher on [Ko-fi](https://ko-fi.com/m1nuz).
+Support Flux Launcher CN on [Ko-fi](https://ko-fi.com/m1nuz).
 
 ## License
 
-Flux Launcher is distributed under the [MIT License](LICENSE).
+Flux Launcher CN is distributed under the [MIT License](LICENSE).
 
 ## References
 
 | Reference | What it provides |
 | --- | --- |
 | [Flow Launcher](https://github.com/Flow-Launcher/Flow.Launcher) | Reference for keyboard-first Windows launcher UX, Everything integration, query history, hotkeys, and legacy plugin compatibility |
-| [windui](https://github.com/huanfeng/wind-ui-rust) | The native Rust GUI framework used by Flux Launcher |
+| [windui](https://github.com/huanfeng/wind-ui-rust) | The native Rust GUI framework used by Flux Launcher CN |
 | [look](https://github.com/kunkka19xx/look) | Reference for the Smooth Caret interaction in the search field |
-| [Windows Acrylic material](https://learn.microsoft.com/en-us/windows/apps/design/style/acrylic) | Reference for the Windows 11 Acrylic/DWM backdrop used by Flux Launcher; Flux uses Acrylic rather than Mica |
+| [Windows Acrylic material](https://learn.microsoft.com/en-us/windows/apps/design/style/acrylic) | Reference for the Windows 11 Acrylic/DWM backdrop used by Flux Launcher CN; Flux uses Acrylic rather than Mica |
 
 [1]: https://github.com/Flow-Launcher/Flow.Launcher/issues/2940 "Flow Launcher memory usage discussion"
 [2]: https://github.com/Flow-Launcher/Flow.Launcher/blob/dev/README.md "Flow Launcher README"

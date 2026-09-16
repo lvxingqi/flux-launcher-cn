@@ -1,18 +1,18 @@
 #ifndef AppVersion
-#define AppVersion "0.1.64"
+#define AppVersion "0.1.0"
 #endif
 #ifndef BuildDir
 #define BuildDir "target\x86_64-pc-windows-msvc\release"
 #endif
 
-#define AppName "Flux Launcher"
-#define AppPublisher "m1nuzz"
+#define AppName "Flux Launcher CN"
+#define AppPublisher "lvxingqi"
 #define AppExeName "flux-launcher.exe"
 #define AppDescription "A lightweight native Windows 11 launcher and file search tool"
-#define AppUrl "https://github.com/m1nuzz/flux-launcher"
+#define AppUrl "https://github.com/lvxingqi/flux-launcher-cn"
 
 [Setup]
-AppId={{C8F1C4D4-8F5A-4E1A-96C0-8D4D8C3D6C4A}
+AppId={{03BBAE09-3528-4CD6-A941-5553ABD33A6C}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -20,8 +20,8 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppUpdatesURL={#AppUrl}/releases/latest
-AppCopyright=Copyright (C) 2026 m1nuzz
-DefaultDirName={localappdata}\Programs\Flux Launcher
+AppCopyright=Copyright (C) 2026 m1nuzz; Copyright (C) 2026 lvxingqi
+DefaultDirName={localappdata}\Programs\Flux Launcher CN
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -47,20 +47,20 @@ OutputDir=..\..\artifacts\installer
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "startup"; Description: "Start Flux Launcher automatically with Windows"; GroupDescription: "Windows startup:"
+Name: "startup"; Description: "Start Flux Launcher CN automatically with Windows"; GroupDescription: "Windows startup:"
 
 [Files]
 Source: "flux-launcher.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Flux Launcher"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\flux-launcher.ico"; IconIndex: 0
+Name: "{group}\Flux Launcher CN"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\flux-launcher.ico"; IconIndex: 0
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Flux Launcher"; ValueData: "{code:StartupCommand}"; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Flux Launcher CN"; ValueData: "{code:StartupCommand}"; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch Flux Launcher now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Launch Flux Launcher CN now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\{#AppExeName}"; Parameters: "--shutdown"; Flags: waituntilterminated skipifdoesntexist; RunOnceId: "FluxLauncherShutdown"
@@ -68,6 +68,7 @@ Filename: "{app}\{#AppExeName}"; Parameters: "--shutdown"; Flags: waituntiltermi
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{group}"
+Type: filesandordirs; Name: "{userappdata}\FluxLauncherCN"
 Type: filesandordirs; Name: "{userappdata}\FluxLauncher"
 
 [Code]

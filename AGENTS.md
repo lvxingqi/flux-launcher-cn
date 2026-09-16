@@ -114,6 +114,17 @@ crates/flux-launcher/locales/zh-CN.yml
 * 新增功能使用独立分类，如 `doc/feat/`，目录不存在时创建。
 * `doc/` 及其子目录 默认仅作本地记录，不加入暂存区或提交，除非项目负责人明确要求。
 
+### README.md 同步要求
+
+* 涉及用户可见功能、默认行为、快捷键、安装方式、发布流程、WinGet、构建命令、产品身份或项目链接的修改，必须检查并在需要时同步更新 `README.md`。
+
+* 仅内部重构、测试或 CI 实现细节变化，且不影响用户使用或项目维护方式时，无需修改 README。
+
+* 更新时保持现有结构，避免无关改写，并确保产品名称、链接、命令和发布说明与当前实现一致。
+
+* README.en.md为README.md的英文版本，每当README.md文件内容发生变化，都需要进行同步。
+
+
 ---
 
 ## 8. Windows 生命周期与启动行为
@@ -211,7 +222,7 @@ gh workflow run windows-release.yml \
   -f release_tag=vX.Y.Z \
   -f runner_label=windows-latest \
   -f release_channel=beta
-
+```
 `release_tag` 必须对应本次实际构建版本，且不得复用已有 release tag。
 
 工作流成功前，不得发布或报告 beta 已完成。
@@ -234,7 +245,14 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 18. Beta 发布
+## 18.版本与 Release 规范
+
+* 项目版本遵循 **Semantic Versioning 2.0.0（SemVer）**。
+* GitHub Release 使用 v 前缀的版本 tag，例如 v0.1.0（即将发布的初始版本）
+
+---
+
+## 19. Beta 发布
 
 * 每次产品修复完成后准备一次**手工 beta 发布**。
 * Beta 必须通过 `Windows 发布` workflow 的 `release_channel=beta` 生成；发布必须 `prerelease: true`，名称不得包含 `(beta)`。
@@ -246,10 +264,10 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 19. 稳定发布与 WinGet
+## 20. 稳定发布与 WinGet
 
 * 稳定发布必须通过明确的用户指令，并手动运行 `Windows UI 发布` workflow 的 `release_channel=stable`。
-* WinGet 仅提交稳定版本，包标识符为 `m1nuzz.FluxLauncher`，路径为 `manifests/m/m1nuzz/FluxLauncher/<version>/`。
+* WinGet 仅提交稳定版本，包标识符为 `lvxingqi.FluxLauncherCN`，路径为 `manifests/l/lvxingqi/FluxLauncherCN/<version>/`。
 * 提交前根据实际安装程序核实 URL、SHA256、schema、安装器元数据及“应用与功能”名称。
 * Beta 不得进入 WinGet；WinGet 自动化不得创建 GitHub Release，且仅在明确启用稳定版策略后才能准备或提交稳定版 PR。
 * 未经用户明确要求，不得创建 `WINGET_GITHUB_TOKEN` 或签名密钥。
@@ -257,7 +275,7 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 20. 完成标准
+## 21. 完成标准
 
 任务仅在以下条件满足后才能报告为完成：
 
@@ -272,7 +290,7 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 21. 优先级原则
+## 22. 优先级原则
 
 规则冲突时按以下优先级处理：
 

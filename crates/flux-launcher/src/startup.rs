@@ -1,4 +1,4 @@
-const STARTUP_VALUE_NAME: &str = "Flux Launcher";
+const STARTUP_VALUE_NAME: &str = "Flux Launcher CN";
 
 #[cfg(windows)]
 const STARTUP_REGISTRY_KEY: windows::core::PCWSTR =

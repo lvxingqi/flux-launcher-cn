@@ -94,7 +94,7 @@ use windui::prelude::*;
 use windui::render::Canvas;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const SINGLE_INSTANCE_ID: &str = "m1nuzz.flux-launcher";
+const SINGLE_INSTANCE_ID: &str = "lvxingqi.flux-launcher-cn";
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
 const EVERYTHING_PROMPT_WINDOW_WIDTH: i32 = 440;
 const EVERYTHING_PROMPT_WINDOW_HEIGHT: i32 = 242;
@@ -1183,7 +1183,7 @@ fn main() {
     let position_for_settings = window_position.clone();
     let settings_for_settings_position = Arc::clone(&shared_settings);
     let tray = Tray::new()
-        .tooltip("Flux Launcher")
+        .tooltip("Flux Launcher CN")
         .icon_rgba(16, 16, &tray_icon())
         .on_left_click(move |ctx| {
             settings_visible_for_left_click.set(false);

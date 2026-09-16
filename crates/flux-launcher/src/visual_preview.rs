@@ -408,7 +408,7 @@ pub(crate) fn run(width: i32, height: i32, x: i32, y: i32, locale: &str) {
     let size_label_for_commands = size_label;
     let preview_text = preview_text_signals();
 
-    let mut app = App::new("Flux Launcher Preview", width, height)
+    let mut app = App::new("Flux Launcher CN Preview", width, height)
         .position(x, y)
         .activate_on_start(false)
         .no_activate(true)

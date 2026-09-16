@@ -37,8 +37,11 @@ impl WindowBootstrap {
             launcher_width,
             0,
         );
-        let mut app =
-            App::new("Flux Launcher", initial_width, initial_height).icon_rgba(16, 16, window_icon);
+        let mut app = App::new("Flux Launcher CN", initial_width, initial_height).icon_rgba(
+            16,
+            16,
+            window_icon,
+        );
         if let Some((x, y)) =
             monitor::centered_position(initial_monitor_preference, initial_width, initial_height)
         {

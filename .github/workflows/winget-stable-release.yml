@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "现有稳定版 Release 标签，例如 v0.1.54"
+        description: "现有稳定版 Release 标签，例如 v0.1.0"
         required: true
         type: string
 
@@ -141,6 +141,17 @@ jobs:
 
           if ($manifestFiles.Count -ne 3) {
             throw "WinGet manifest 必须包含 3 个 YAML 文件，实际为 $($manifestFiles.Count) 个。"
+          }
+
+          $expectedNames = @(
+            "lvxingqi.FluxLauncherCN.yaml",
+            "lvxingqi.FluxLauncherCN.locale.en-US.yaml",
+            "lvxingqi.FluxLauncherCN.installer.yaml"
+          )
+          $actualNames = @($manifestFiles.Name | Sort-Object)
+
+          if (Compare-Object $expectedNames $actualNames) {
+            throw "生成的 WinGet manifest 文件名不符合 lvxingqi.FluxLauncherCN。"
           }
 
           foreach ($manifest in $manifestFiles) {

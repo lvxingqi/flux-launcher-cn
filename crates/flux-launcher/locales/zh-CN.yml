@@ -135,7 +135,7 @@ settings:
 updater:
   checking_github: 正在检查稳定的 GitHub 版本...
   checked_automatically: 稳定更新会自动检查
-  installing_restarting: 正在安装稳定版 %{version}；Flux Launcher 即将重启
+  installing_restarting: 正在安装稳定版 %{version}；Flux Launcher CN 即将重启
   installing: 正在安装稳定版 %{version}
   install_failed: 稳定版 %{version} 更新失败：%{error}
   install_failed_toast: 更新安装失败：%{error}
@@ -190,7 +190,7 @@ priorities:
   remove: 移除
   empty: 尚无显式优先级。选择一个应用程序，按向右键，然后选择"设为优先级"。
 visual_preview:
-  title: Flux Launcher
+  title: Flux Launcher CN
   description: 这是实际的启动器预览窗口。其客户区直接调整大小，而非缩放进模拟卡片。
   units_hint: 控件使用逻辑客户区单位（DIP）；Windows 会在预览显示器 DPI 下将它们映射为物理像素。
   client_area_label: "%{width} × %{height} 逻辑像素客户区"

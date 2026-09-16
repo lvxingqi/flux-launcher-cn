@@ -9,7 +9,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GITHUB_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/m1nuzz/flux-launcher/releases/latest";
+    "https://api.github.com/repos/lvxingqi/flux-launcher-cn/releases/latest";
 const INSTALLER_ASSET_NAME: &str = "FluxLauncher-Setup.exe";
 const USER_AGENT: &str = "FluxLauncher-Updater";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
@@ -310,7 +310,7 @@ mod tests {
 
     fn release_payload(tag_name: &str, prerelease: bool) -> String {
         format!(
-            r#"{{"tag_name":"{tag_name}","html_url":"https://github.com/m1nuzz/flux-launcher/releases/tag/{tag_name}","draft":false,"prerelease":{prerelease},"assets":[{{"name":"FluxLauncher-Setup.exe","browser_download_url":"https://example.test/FluxLauncher-Setup.exe","digest":"sha256:abc"}}]}}"#
+            r#"{{"tag_name":"{tag_name}","html_url":"https://github.com/lvxingqi/flux-launcher-cn/releases/tag/{tag_name}","draft":false,"prerelease":{prerelease},"assets":[{{"name":"FluxLauncher-Setup.exe","browser_download_url":"https://example.test/FluxLauncher-Setup.exe","digest":"sha256:abc"}}]}}"#
         )
     }
 
