@@ -94,10 +94,7 @@ crates/flux-launcher/locales/zh-CN.yml
 ## 5. 工具失败与异常记录
 
 * 工具出现失败、超时、异常返回或部分状态变更时，及时在 `doc/question/` 记录中文 Markdown 报告，包含时间、工具 / 服务、操作、影响、原始错误、诊断与恢复、验证结果。
-* `AGENTS.md` 与 `AGENTS.en.md` 必须保持语义一致，规则变更时同步修改。
 * `apply_patch` 已禁用，禁止调用。
-* 仅在确认 Cline 内置工具不可用或同一操作连续失败时，才可加入 `cline.disabledTools`；单次或临时错误不得禁用。
-* `github`、`desktop-commander`、`serena` 的失败不属于 Cline 内置工具失败。
 
 ---
 
@@ -115,8 +112,7 @@ crates/flux-launcher/locales/zh-CN.yml
 * `doc/` 下文档使用中文。
 * 产品修复后，在 `doc/fix/` 生成对应修复报告，至少包含：实现说明、验证结果、已知限制、用户验证步骤。
 * 新增功能使用独立分类，如 `doc/feat/`，目录不存在时创建。
-* `doc/` 默认仅作本地记录，不加入暂存区或提交，除非项目负责人明确要求。
-* `doc/fix/`、`doc/question/` 同样默认不提交。
+* `doc/` 及其子目录 默认仅作本地记录，不加入暂存区或提交，除非项目负责人明确要求。
 
 ---
 
