@@ -10,7 +10,7 @@ Installers:
   - Architecture: x64
     InstallerType: inno
     InstallerUrl: https://github.com/lvxingqi/flux-launcher-cn/releases/download/v0.1.0/FluxLauncher-Setup.exe
-    InstallerSha256: 44E5A300C38B50EA8768C4536C8B2B88E26B5B433958C6DB1B9EF63DB8826D59
+    InstallerSha256: 287993D3CD13B19FAC293FE13E2C82923F038CF8782008CDF19A66FCB2441017
     Scope: user
     InstallerSwitches:
       Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
