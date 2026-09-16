@@ -67,7 +67,7 @@ jobs:
       - name: 验证 WinGet Manifest
         shell: pwsh
         run: |
-          $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
+          $packageRoot = Resolve-Path "packaging/winget/manifests/l/lvxingqi/FluxLauncherCN"
           $manifestRoots = @(Get-ChildItem $packageRoot -Directory)
 
           if ($manifestRoots.Count -eq 0) {
@@ -87,7 +87,7 @@ jobs:
       - name: 检查包标识与目录结构
         shell: pwsh
         run: |
-          $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
+          $packageRoot = Resolve-Path "packaging/winget/manifests/l/lvxingqi/FluxLauncherCN"
           $manifestRoots = @(Get-ChildItem $packageRoot -Directory)
 
           foreach ($manifestRoot in $manifestRoots) {
@@ -100,7 +100,7 @@ jobs:
             foreach ($manifest in $manifests) {
               $content = Get-Content $manifest.FullName -Raw
 
-              if ($content -notmatch 'PackageIdentifier:\s*m1nuzz\.FluxLauncher') {
+              if ($content -notmatch 'PackageIdentifier:\s*lvxingqi\.FluxLauncherCN') {
                 throw "Manifest $($manifest.Name) 的 PackageIdentifier 不正确。"
               }
             }
@@ -156,7 +156,7 @@ jobs:
       - name: 验证稳定版安装程序存在对应 manifest
         shell: pwsh
         run: |
-          $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
+          $packageRoot = Resolve-Path "packaging/winget/manifests/l/lvxingqi/FluxLauncherCN"
 
           $versions = @(Get-ChildItem $packageRoot -Directory |
             Select-Object -ExpandProperty Name)

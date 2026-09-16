@@ -131,7 +131,7 @@ jobs:
 
           $manifestDirectory = Join-Path `
             $env:GITHUB_WORKSPACE `
-            "generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION"
+            "generated-winget/manifests/l/lvxingqi/FluxLauncherCN/$env:VERSION"
 
           if (-not (Test-Path $manifestDirectory)) {
             throw "未生成 WinGet manifest 目录：$manifestDirectory"
@@ -143,6 +143,14 @@ jobs:
             throw "WinGet manifest 必须包含 3 个 YAML 文件，实际为 $($manifestFiles.Count) 个。"
           }
 
+          foreach ($manifest in $manifestFiles) {
+            $content = Get-Content $manifest.FullName -Raw
+
+            if ($content -notmatch 'PackageIdentifier:\s*lvxingqi\.FluxLauncherCN') {
+              throw "Manifest $($manifest.Name) 的 PackageIdentifier 不正确。"
+            }
+          }
+
           winget validate --manifest $manifestDirectory
 
           if ($LASTEXITCODE -ne 0) {
@@ -152,14 +160,14 @@ jobs:
       - name: 检出 WinGet Fork
         uses: actions/checkout@v4
         with:
-          repository: m1nuzz/winget-pkgs
+          repository: lvxingqi/winget-pkgs
           ref: master
           path: winget-pkgs
           token: ${{ secrets.WINGET_GITHUB_TOKEN }}
           fetch-depth: 1
           filter: blob:none
           sparse-checkout: |
-            manifests/m/m1nuzz/FluxLauncher
+            manifests/l/lvxingqi/FluxLauncherCN
           sparse-checkout-cone-mode: true
 
       - name: 更新 Fork 并创建官方 PR
@@ -168,12 +176,12 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          $branch = "flux-launcher-$env:VERSION"
+          $branch = "flux-launcher-cn-$env:VERSION"
 
           $existingPrJson = gh pr list `
             --repo microsoft/winget-pkgs `
             --state open `
-            --head "m1nuzz:$branch" `
+            --head "lvxingqi:$branch" `
             --json number,url
 
           if ($LASTEXITCODE -ne 0) {
@@ -192,8 +200,8 @@ jobs:
 
           Push-Location winget-pkgs
 
-          git config user.name "m1nuzz"
-          git config user.email "m1nusz0r@gmail.com"
+          git config user.name "lvxingqi"
+          git config user.email "75979087+lvxingqi@users.noreply.github.com"
 
           git remote add upstream https://github.com/microsoft/winget-pkgs.git
           git fetch --filter=blob:none upstream master
@@ -208,7 +216,7 @@ jobs:
             git switch -c $branch upstream/master
           }
 
-          $manifestDirectory = "manifests/m/m1nuzz/FluxLauncher/$env:VERSION"
+          $manifestDirectory = "manifests/l/lvxingqi/FluxLauncherCN/$env:VERSION"
 
           New-Item `
             -ItemType Directory `
@@ -217,7 +225,7 @@ jobs:
             Out-Null
 
           Copy-Item `
-            "$env:GITHUB_WORKSPACE/generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION/*.yaml" `
+            "$env:GITHUB_WORKSPACE/generated-winget/manifests/l/lvxingqi/FluxLauncherCN/$env:VERSION/*.yaml" `
             $manifestDirectory `
             -Force
 
@@ -228,7 +236,7 @@ jobs:
           $manifestChangesPending = $LASTEXITCODE -ne 0
 
           if ($manifestChangesPending) {
-            git commit -m "Add m1nuzz.FluxLauncher $env:VERSION manifest"
+            git commit -m "feat(launcher): add FluxLauncherCN WinGet manifest"
 
             git push --set-upstream origin $branch
 
@@ -243,32 +251,32 @@ jobs:
             -r `
             --name-only `
             upstream/master `
-            "manifests/m/m1nuzz/FluxLauncher" |
+            "manifests/l/lvxingqi/FluxLauncherCN" |
             Select-Object -First 1
 
           $title = if ([string]::IsNullOrWhiteSpace($packageExists)) {
-            "New package: m1nuzz.FluxLauncher version $env:VERSION"
+            "New package: lvxingqi.FluxLauncherCN version $env:VERSION"
           } else {
-            "Update: m1nuzz.FluxLauncher to $env:VERSION"
+            "Update: lvxingqi.FluxLauncherCN to $env:VERSION"
           }
 
           $body = @"
-          ## Description
+          ## 说明
 
-          手工提交稳定版 `m1nuzz.FluxLauncher` $env:VERSION。
+          手工提交稳定版 `lvxingqi.FluxLauncherCN` $env:VERSION。
 
           - 稳定版 Release: $env:RELEASE_URL
           - 安装程序: FluxLauncher-Setup.exe
           - SHA256: $env:INSTALLER_SHA256
           - Manifest 验证: winget validate --manifest
 
-          该版本不是 Beta，Beta 版本不会进入 WinGet。
+          该版本为稳定版，Beta 版本不会进入 WinGet。
           "@
 
           $prUrl = gh pr create `
             --repo microsoft/winget-pkgs `
             --base master `
-            --head "m1nuzz:$branch" `
+            --head "lvxingqi:$branch" `
             --title $title `
             --body $body
 
