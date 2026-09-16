@@ -19,7 +19,7 @@ Installers:
     AppsAndFeaturesEntries:
       - DisplayName: Flux Launcher CN
         Publisher: lvxingqi
-        DisplayVersion: 0.1.54
+        DisplayVersion: 0.1.0
         InstallerType: inno
 ManifestType: installer
 ManifestVersion: 1.12.0
