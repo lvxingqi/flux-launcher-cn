@@ -1,159 +1,198 @@
-name: Windows visual smoke
+id="m3b8qa"
+name: Windows 视觉烟雾测试
 
 on:
   workflow_dispatch:
     inputs:
       runner_label:
-        description: "Configured GitHub larger-runner label (use windows-latest for standard VM)"
+        description: "GitHub Windows runner 标签，标准环境使用 windows-latest"
         required: false
         default: windows-latest
         type: string
+
       force_translucent_fallback:
-        description: "Force the non-DWM uniform-alpha fallback instead of system Acrylic"
+        description: "强制使用非 DWM 统一透明度回退，仅用于回退路径验证"
         required: false
         default: false
         type: boolean
+
       navigation_query:
-        description: "Optional targeted query for monotonic Down navigation smoke"
+        description: "用于 Down 导航回归测试的查询"
         required: false
         default: wab
         type: string
+
       navigation_cycles:
-        description: "Number of monotonic Down presses after the query for viewport-scroll regression"
+        description: "查询后连续 Down 次数，用于验证结果视口滚动"
         required: false
         default: "0"
         type: string
+
       tab_navigation_cycles:
-        description: "Number of Tab/Shift+Tab result-navigation cycles after the query"
+        description: "查询后 Tab / Shift+Tab 结果导航循环次数"
         required: false
         default: "0"
         type: string
+
       pointer_interaction_smoke:
-        description: "Exercise result hover selection, wheel scrolling, and mouse click"
+        description: "验证结果悬停选择、滚轮滚动和鼠标点击"
         required: false
         default: false
         type: boolean
+
       result_mouse_interaction_smoke:
-        description: "Reproduce result right-click launch and Ctrl-dependent title selection"
+        description: "验证结果右键启动及 Ctrl 相关标题选择"
         required: false
         default: false
         type: boolean
+
       everything_missing_smoke:
-        description: "Exercise the English Everything-not-installed Settings prompt without installing"
+        description: "验证 Everything 未安装时的英文设置提示，不执行安装"
         required: false
         default: false
         type: boolean
+
       everything_install_prompt_smoke:
-        description: "Measure first-run Everything installation prompt visibility, foreground activation, and window geometry"
+        description: "验证首次 Everything 安装提示的显示、前台激活和窗口尺寸"
         required: false
         default: false
         type: boolean
+
       everything_plugins_settings_smoke:
-        description: "Verify Everything controls and missing/installed states in Settings > Plugins without launching winget"
+        description: "验证设置 > Plugins 中的 Everything 控件及安装状态，不启动 winget"
         required: false
         default: false
         type: boolean
+
       recycle_bin_smoke:
-        description: "Exercise Recycle Bin search and action mode without emptying it"
+        description: "验证回收站搜索和操作模式，不清空回收站"
         required: false
         default: false
         type: boolean
+
       cursor_visibility_smoke:
-        description: "Verify cursor visible on activation, hidden while typing, restored on mouse movement"
+        description: "验证激活、输入及鼠标移动时的光标显示状态"
         required: false
         default: false
         type: boolean
+
       scrollbar_gap_smoke:
-        description: "Capture result list scrollbar spacing after mouse-wheel scrolling"
+        description: "验证鼠标滚轮滚动后的结果列表滚动条间距"
         required: false
         default: false
         type: boolean
+
       query_clear_on_reopen_smoke:
-        description: "Verify repeated Alt+Space reopens with a clean search field and no stale query flash"
+        description: "验证重复 Alt+Space 激活时搜索框为空且无旧查询闪现"
         required: false
         default: false
         type: boolean
+
       ctrl_r_smoke:
-        description: "Verify Ctrl+R launches the selected result with Windows elevation"
+        description: "验证 Ctrl+R 使用 Windows 提权启动选中结果"
         required: false
         default: false
         type: boolean
+
       ctrl_c_smoke:
-        description: "Verify Ctrl+C copies the selected result path in quotes"
+        description: "验证 Ctrl+C 以引号形式复制选中结果路径"
         required: false
         default: false
         type: boolean
+
       tray_settings_smoke:
-        description: "Exercise the tray Settings show lifecycle before measuring the panel"
+        description: "验证托盘设置显示生命周期及面板尺寸"
         required: false
         default: false
         type: boolean
+
       tray_settings_after_deactivation_smoke:
-        description: "Verify Settings opens as a full panel after Flux is hidden by another window"
+        description: "验证被其他窗口隐藏后重新打开设置时使用完整面板"
         required: false
         default: false
         type: boolean
+
       visual_settings_smoke:
-        description: "Open Visual Settings, measure the real preview HWND client geometry at DPI, verify realtime slider/reset IPC, stable Settings, and cleanup"
+        description: "验证视觉设置预览窗口尺寸、实时滑块、重置 IPC、设置状态和清理"
         required: false
         default: false
         type: boolean
+
       resource_profile_smoke:
-        description: "Run a bounded repeated-query process resource profile and record memory/CPU samples"
+        description: "执行有界重复查询资源测试并记录内存和 CPU 样本"
         required: false
         default: false
         type: boolean
+
       resource_profile_cycles:
-        description: "Number of repeated query cycles for resource profiling"
+        description: "资源测试的重复查询次数"
         required: false
         default: "32"
         type: string
+
       monitor_preference_smoke:
-        description: "Run Primary/Cursor/Foreground monitor placement smoke"
+        description: "验证主显示器、光标所在显示器及前台窗口显示器布局"
         required: false
         default: false
         type: boolean
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  mica-smoke:
+  visual-smoke:
     runs-on: ${{ inputs.runner_label || 'windows-latest' }}
+
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Install stable toolchain
+      - name: 安装稳定版 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build launcher and native Flow fixture
+      - name: 构建启动器和原生 Flow 测试插件
+        shell: pwsh
         run: |
-          cargo build --release --target x86_64-pc-windows-msvc -p flux-launcher -p flow-plugin-fixture
-          $pluginRoot = Join-Path $env:APPDATA "FluxLauncher\Plugins\NativeFlowFixture"
-          New-Item -ItemType Directory -Force -Path $pluginRoot | Out-Null
-          Copy-Item ./tests/fixtures/flow-native-plugin/plugin.json (Join-Path $pluginRoot "plugin.json") -Force
-          Copy-Item ./target/x86_64-pc-windows-msvc/release/flow-plugin-fixture.exe (Join-Path $pluginRoot "fixture-plugin.exe") -Force
+          cargo build --release `
+            --target x86_64-pc-windows-msvc `
+            -p flux-launcher `
+            -p flow-plugin-fixture
 
-      - name: Enable DWM effects and collect preflight diagnostics
+          $pluginRoot = Join-Path $env:APPDATA "FluxLauncher\Plugins\NativeFlowFixture"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $pluginRoot |
+            Out-Null
+
+          Copy-Item `
+            ./tests/fixtures/flow-native-plugin/plugin.json `
+            (Join-Path $pluginRoot "plugin.json") `
+            -Force
+
+          Copy-Item `
+            ./target/x86_64-pc-windows-msvc/release/flow-plugin-fixture.exe `
+            (Join-Path $pluginRoot "fixture-plugin.exe") `
+            -Force
+
+      - name: 启用 DWM 效果并收集预检诊断
         shell: pwsh
         run: ./scripts/enable-dwm-smoke.ps1 -OutputDirectory ./artifacts/mica-smoke
 
-      - name: Smoke first-run Everything installation prompt
+      - name: 验证首次 Everything 安装提示
         if: ${{ inputs.everything_install_prompt_smoke == true }}
         shell: pwsh
         run: ./scripts/everything-install-prompt-smoke.ps1 -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe -OutputDirectory ./artifacts/mica-smoke/everything-install-prompt
 
-      - name: Smoke Everything controls in Plugins settings
+      - name: 验证 Everything 插件设置
         if: ${{ inputs.everything_plugins_settings_smoke == true }}
         shell: pwsh
         run: ./scripts/everything-plugins-settings-smoke.ps1 -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe -OutputDirectory ./artifacts/mica-smoke/everything-plugins-settings
 
-      - name: Capture desktop compositor output
+      - name: 捕获桌面合成输出
         shell: pwsh
         env:
           WINDUI_D2D: "1"
@@ -171,65 +210,88 @@ jobs:
             QueryResponsivenessSmoke = $true
             ImeMessageSmoke = $true
           }
+
           if ("${{ inputs.force_translucent_fallback }}" -eq "true") {
             $captureParams.ForceTranslucentFallback = $true
           }
+
           if ("${{ inputs.navigation_query }}" -ne "") {
             $captureParams.NavigationQuery = "${{ inputs.navigation_query }}"
           }
+
           if ("${{ inputs.navigation_cycles }}" -ne "") {
             $captureParams.NavigationCycles = [int]"${{ inputs.navigation_cycles }}"
           }
+
           if ("${{ inputs.tab_navigation_cycles }}" -ne "") {
             $captureParams.TabNavigationCycles = [int]"${{ inputs.tab_navigation_cycles }}"
           }
+
           if ("${{ inputs.pointer_interaction_smoke }}" -eq "true") {
             $captureParams.PointerInteractionSmoke = $true
           }
+
           if ("${{ inputs.result_mouse_interaction_smoke }}" -eq "true") {
             $captureParams.ResultMouseInteractionSmoke = $true
           }
+
           if ("${{ inputs.everything_missing_smoke }}" -eq "true") {
             $captureParams.EverythingMissingSmoke = $true
           }
+
           if ("${{ inputs.recycle_bin_smoke }}" -eq "true") {
             $captureParams.RecycleBinSmoke = $true
           }
+
           if ("${{ inputs.cursor_visibility_smoke }}" -eq "true") {
             $captureParams.CursorVisibilitySmoke = $true
           }
+
           if ("${{ inputs.scrollbar_gap_smoke }}" -eq "true") {
             $captureParams.ScrollbarGapSmoke = $true
           }
+
           if ("${{ inputs.query_clear_on_reopen_smoke }}" -eq "true") {
             $captureParams.QueryClearOnReopenSmoke = $true
           }
+
           if ("${{ inputs.ctrl_r_smoke }}" -eq "true") {
             $captureParams.CtrlRSmoke = $true
           }
+
           if ("${{ inputs.ctrl_c_smoke }}" -eq "true") {
             $captureParams.CtrlCSmoke = $true
           }
+
           if ("${{ inputs.tray_settings_smoke }}" -eq "true") {
             $captureParams.TraySettingsSmoke = $true
           }
+
           if ("${{ inputs.tray_settings_after_deactivation_smoke }}" -eq "true") {
             $captureParams.TraySettingsAfterDeactivationSmoke = $true
           }
+
           if ("${{ inputs.visual_settings_smoke }}" -eq "true") {
             $captureParams.VisualSettingsSmoke = $true
           }
+
           if ("${{ inputs.resource_profile_smoke }}" -eq "true") {
             $captureParams.ResourceProfileSmoke = $true
             $captureParams.ResourceProfileCycles = [int]"${{ inputs.resource_profile_cycles }}"
           }
+
+          if ("${{ inputs.monitor_preference_smoke }}" -eq "true") {
+            $captureParams.MonitorPreferenceSmoke = $true
+          }
+
           $captureParams.IdlePerformanceSmoke = $true
           $captureParams.FocusToggleSmoke = $true
           $captureParams.DeactivationClickSmoke = $true
           $captureParams.FolderLaunchSmoke = $true
+
           & ./scripts/capture-mica.ps1 @captureParams
 
-      - name: Upload Everything prompt and Plugins smoke artifacts
+      - name: 上传 Everything 验证产物
         if: ${{ always() && (inputs.everything_install_prompt_smoke == true || inputs.everything_plugins_settings_smoke == true) }}
         uses: actions/upload-artifact@v4
         with:
@@ -237,7 +299,7 @@ jobs:
           path: artifacts/mica-smoke/everything-*
           if-no-files-found: warn
 
-      - name: Upload launcher binary
+      - name: 上传启动器可执行文件
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
@@ -245,12 +307,12 @@ jobs:
           path: target/x86_64-pc-windows-msvc/release/flux-launcher.exe
           if-no-files-found: error
 
-      - name: Test monitor preference modes
-        if: ${{ inputs.monitor_preference_smoke == true || github.event_name == 'push' }}
+      - name: 验证显示器布局偏好
+        if: ${{ inputs.monitor_preference_smoke == true }}
         shell: pwsh
         run: ./scripts/monitor-preference-smoke.ps1 -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe -OutputDirectory ./artifacts/mica-smoke
 
-      - name: Upload visual evidence
+      - name: 上传视觉验证证据
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:

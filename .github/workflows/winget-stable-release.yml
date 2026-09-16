@@ -1,12 +1,10 @@
-name: Submit stable release to WinGet
+name: 提交稳定版到 WinGet
 
 on:
-  release:
-    types: [published, edited]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing stable release tag, for example v0.1.54"
+        description: "现有稳定版 Release 标签，例如 v0.1.54"
         required: true
         type: string
 
@@ -15,97 +13,143 @@ permissions:
 
 jobs:
   submit:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && github.event.release.prerelease == false && (github.event.action == 'published' || (github.event.action == 'edited' && github.event.changes.prerelease.from == true)))
     runs-on: windows-latest
+
     steps:
-      - name: Require WinGet submission token
+      - name: 检查 WinGet 提交凭据
         shell: pwsh
         env:
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINGET_GITHUB_TOKEN)) {
-            throw "Configure the WINGET_GITHUB_TOKEN repository secret before running stable WinGet submission."
+            throw "未配置 WINGET_GITHUB_TOKEN。首次启用 WinGet 提交前，请由项目负责人明确配置该凭据。"
           }
 
-      - name: Checkout Flux source
+      - name: 检出 Flux 源码
         uses: actions/checkout@v4
         with:
           path: flux-source
           fetch-depth: 1
 
-      - name: Resolve and verify stable release
+      - name: 检查稳定版 Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
-          RELEASE_TAG_FROM_INPUT: ${{ inputs.release_tag }}
-          RELEASE_TAG_FROM_EVENT: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          $tag = if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") { $env:RELEASE_TAG_FROM_INPUT } else { $env:RELEASE_TAG_FROM_EVENT }
+          $tag = $env:RELEASE_TAG
+
           if ([string]::IsNullOrWhiteSpace($tag) -or $tag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
-            throw "Expected a semantic release tag such as v0.1.54, got '$tag'."
+            throw "Release 标签必须符合 vX.Y.Z 格式，实际为 '$tag'。"
           }
 
-          $release = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isPrerelease,assets,url | ConvertFrom-Json
+          $release = gh release view $tag `
+            --repo $env:GITHUB_REPOSITORY `
+            --json isPrerelease,isDraft,assets,url |
+            ConvertFrom-Json
+
+          if ($release.isDraft) {
+            throw "Release '$tag' 仍为 draft，拒绝提交到 WinGet。"
+          }
+
           if ($release.isPrerelease) {
-            throw "Refusing to submit prerelease '$tag' to WinGet. Publish a stable release first."
+            throw "Release '$tag' 是 Beta / prerelease，禁止提交到 WinGet。"
           }
 
-          $asset = @($release.assets | Where-Object { $_.name -eq "FluxLauncher-Setup.exe" })
-          if ($asset.Count -ne 1) {
-            throw "Stable release '$tag' must contain exactly one FluxLauncher-Setup.exe asset."
+          $assets = @(
+            $release.assets |
+            Where-Object { $_.name -eq "FluxLauncher-Setup.exe" }
+          )
+
+          if ($assets.Count -ne 1) {
+            throw "稳定版 Release '$tag' 必须包含且仅包含一个 FluxLauncher-Setup.exe。"
           }
 
           $downloadDirectory = Join-Path $env:RUNNER_TEMP "flux-winget-release"
           New-Item -ItemType Directory -Force -Path $downloadDirectory | Out-Null
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern "FluxLauncher-Setup.exe" --dir $downloadDirectory --clobber
+
+          gh release download $tag `
+            --repo $env:GITHUB_REPOSITORY `
+            --pattern "FluxLauncher-Setup.exe" `
+            --dir $downloadDirectory `
+            --clobber
+
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to download FluxLauncher-Setup.exe from stable release '$tag'."
+            throw "无法下载稳定版 Release '$tag' 的安装程序。"
           }
 
           $installerPath = Join-Path $downloadDirectory "FluxLauncher-Setup.exe"
           $installerHash = (Get-FileHash $installerPath -Algorithm SHA256).Hash
           $version = $tag.TrimStart("v")
-          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "INSTALLER_SHA256=$installerHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_URL=$($release.url)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "INSTALLER_PATH=$installerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Stable release $tag resolved with installer SHA256 $installerHash."
 
-      - name: Update App Installer / WinGet
+          "VERSION=$version" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_TAG=$tag" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "INSTALLER_SHA256=$installerHash" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_URL=$($release.url)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "INSTALLER_PATH=$installerPath" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "已确认稳定版 $tag，安装程序 SHA256：$installerHash"
+
+      - name: 更新 WinGet
         shell: pwsh
         run: |
-          winget upgrade --id Microsoft.AppInstaller --exact --accept-package-agreements --accept-source-agreements --disable-interactivity
+          winget upgrade `
+            --id Microsoft.AppInstaller `
+            --exact `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+
           $upgradeExitCode = $LASTEXITCODE
+
           Start-Sleep -Seconds 3
+
           $versionText = (winget --version).Trim().TrimStart("v")
           $version = [version]$versionText
+
           if ($version -lt [version]"1.12.0") {
-            throw "WinGet $versionText is too old for schema 1.12 validation (upgrade exit code $upgradeExitCode)."
-          }
-          if ($upgradeExitCode -ne 0) {
-            Write-Host "App Installer reported exit code $upgradeExitCode after completing the upgrade; continuing with WinGet $versionText."
+            throw "WinGet $versionText 版本过低，无法执行 schema 1.12 验证。"
           }
 
-      - name: Generate and validate manifest set
+          if ($upgradeExitCode -ne 0) {
+            Write-Host "App Installer 更新返回 $upgradeExitCode，但 WinGet $versionText 已可用，继续验证。"
+          }
+
+      - name: 生成并验证 WinGet Manifest
         shell: pwsh
         run: |
           Push-Location flux-source
+
           ./scripts/generate-winget-manifest.ps1 `
             -Version $env:VERSION `
             -InstallerSha256 $env:INSTALLER_SHA256 `
             -OutputRoot ../generated-winget/manifests `
             -ReleaseTag $env:RELEASE_TAG
+
           Pop-Location
 
-          $manifestDirectory = Join-Path $env:GITHUB_WORKSPACE "generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION"
-          winget validate --manifest $manifestDirectory
-          if ($LASTEXITCODE -ne 0) {
-            throw "WinGet manifest validation failed for $manifestDirectory."
+          $manifestDirectory = Join-Path `
+            $env:GITHUB_WORKSPACE `
+            "generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION"
+
+          if (-not (Test-Path $manifestDirectory)) {
+            throw "未生成 WinGet manifest 目录：$manifestDirectory"
           }
 
-      - name: Checkout WinGet fork
+          $manifestFiles = @(Get-ChildItem $manifestDirectory -Filter "*.yaml" -File)
+
+          if ($manifestFiles.Count -ne 3) {
+            throw "WinGet manifest 必须包含 3 个 YAML 文件，实际为 $($manifestFiles.Count) 个。"
+          }
+
+          winget validate --manifest $manifestDirectory
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "WinGet manifest 验证失败：$manifestDirectory"
+          }
+
+      - name: 检出 WinGet Fork
         uses: actions/checkout@v4
         with:
           repository: m1nuzz/winget-pkgs
@@ -118,31 +162,45 @@ jobs:
             manifests/m/m1nuzz/FluxLauncher
           sparse-checkout-cone-mode: true
 
-      - name: Update fork and open official PR
+      - name: 更新 Fork 并创建官方 PR
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           $branch = "flux-launcher-$env:VERSION"
-          $existingPrJson = gh pr list --repo microsoft/winget-pkgs --state open --head "m1nuzz:$branch" --json number,url
+
+          $existingPrJson = gh pr list `
+            --repo microsoft/winget-pkgs `
+            --state open `
+            --head "m1nuzz:$branch" `
+            --json number,url
+
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to query official WinGet PRs for branch $branch."
+            throw "无法查询官方 WinGet PR。"
           }
-          $existingPrs = @($existingPrJson | ConvertFrom-Json)
+
+          $existingPrs = @(
+            $existingPrJson | ConvertFrom-Json
+          )
+
           if ($existingPrs.Count -gt 0) {
             $existingPr = $existingPrs[0]
-            Write-Host "An official WinGet PR already exists for $env:VERSION: #$($existingPr.number) $($existingPr.url)"
+            Write-Host "该版本已有 WinGet PR：#$($existingPr.number) $($existingPr.url)"
             exit 0
           }
 
           Push-Location winget-pkgs
+
           git config user.name "m1nuzz"
           git config user.email "m1nusz0r@gmail.com"
+
           git remote add upstream https://github.com/microsoft/winget-pkgs.git
           git fetch --filter=blob:none upstream master
           git fetch origin master
+
           git ls-remote --exit-code --heads origin $branch *> $null
+
           if ($LASTEXITCODE -eq 0) {
             git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
             git switch -C $branch "origin/$branch"
@@ -151,48 +209,73 @@ jobs:
           }
 
           $manifestDirectory = "manifests/m/m1nuzz/FluxLauncher/$env:VERSION"
-          New-Item -ItemType Directory -Force -Path $manifestDirectory | Out-Null
-          Copy-Item "$env:GITHUB_WORKSPACE/generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION/*.yaml" $manifestDirectory -Force
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $manifestDirectory |
+            Out-Null
+
+          Copy-Item `
+            "$env:GITHUB_WORKSPACE/generated-winget/manifests/m/m1nuzz/FluxLauncher/$env:VERSION/*.yaml" `
+            $manifestDirectory `
+            -Force
+
           git add $manifestDirectory
           git diff --cached --check
+
           git diff --cached --quiet
           $manifestChangesPending = $LASTEXITCODE -ne 0
+
           if ($manifestChangesPending) {
             git commit -m "Add m1nuzz.FluxLauncher $env:VERSION manifest"
+
             git push --set-upstream origin $branch
+
             if ($LASTEXITCODE -ne 0) {
-              throw "Unable to push branch $branch to m1nuzz/winget-pkgs."
+              throw "无法推送 WinGet Fork 分支 $branch。"
             }
           } else {
-            Write-Host "The fork branch already contains the generated manifest set; continuing to PR creation."
+            Write-Host "Fork 分支已经包含该版本 manifest，继续创建 PR。"
           }
 
-          $packageExists = git ls-tree -r --name-only upstream/master "manifests/m/m1nuzz/FluxLauncher" | Select-Object -First 1
+          $packageExists = git ls-tree `
+            -r `
+            --name-only `
+            upstream/master `
+            "manifests/m/m1nuzz/FluxLauncher" |
+            Select-Object -First 1
+
           $title = if ([string]::IsNullOrWhiteSpace($packageExists)) {
             "New package: m1nuzz.FluxLauncher version $env:VERSION"
           } else {
             "Update: m1nuzz.FluxLauncher to $env:VERSION"
           }
+
           $body = @"
           ## Description
 
-          Automated stable release submission for `m1nuzz.FluxLauncher` version `$env:VERSION`.
+          手工提交稳定版 `m1nuzz.FluxLauncher` $env:VERSION。
 
-          - Stable release: $env:RELEASE_URL
-          - Installer: `FluxLauncher-Setup.exe` (Inno Setup, x64)
-          - Installer SHA256: `$env:INSTALLER_SHA256`
-          - Manifest validation: `winget validate --manifest`
+          - 稳定版 Release: $env:RELEASE_URL
+          - 安装程序: FluxLauncher-Setup.exe
+          - SHA256: $env:INSTALLER_SHA256
+          - Manifest 验证: winget validate --manifest
 
-          The release is published with `prerelease: false`. Beta releases are intentionally ignored by this workflow.
+          该版本不是 Beta，Beta 版本不会进入 WinGet。
           "@
+
           $prUrl = gh pr create `
             --repo microsoft/winget-pkgs `
             --base master `
             --head "m1nuzz:$branch" `
             --title $title `
             --body $body
+
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to create the official WinGet pull request."
+            throw "无法创建官方 WinGet Pull Request。"
           }
-          Write-Host "Created official WinGet PR: $prUrl"
+
+          Write-Host "已创建 WinGet PR：$prUrl"
+
           Pop-Location

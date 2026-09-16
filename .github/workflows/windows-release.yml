@@ -1,0 +1,283 @@
+name: Windows 发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release 标签，例如 v0.1.51"
+        required: true
+        type: string
+
+      runner_label:
+        description: "GitHub Windows runner 标签，标准环境使用 windows-latest"
+        required: false
+        default: windows-latest
+        type: string
+
+      release_channel:
+        description: "发布通道"
+        required: false
+        default: beta
+        type: choice
+        options:
+          - beta
+          - stable
+
+      publish_release:
+        description: "仅在确认后创建或更新 GitHub Release"
+        required: false
+        default: false
+        type: boolean
+
+      release_notes:
+        description: "发布说明；创建 Release 时必须填写人工校对的完整说明"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ${{ inputs.runner_label || 'windows-latest' }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装稳定版 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 读取并校验应用版本
+        shell: pwsh
+        run: |
+          $cargoVersion = cargo metadata --no-deps --format-version 1 |
+            ConvertFrom-Json |
+            Select-Object -ExpandProperty packages |
+            Where-Object { $_.name -eq "flux-launcher" } |
+            Select-Object -ExpandProperty version
+
+          if (-not $cargoVersion) {
+            throw "无法从 Cargo metadata 获取 flux-launcher 版本。"
+          }
+
+          $tagVersion = "${{ inputs.release_tag }}".TrimStart("v")
+
+          if ($cargoVersion -ne $tagVersion) {
+            throw "版本不一致：Cargo=$cargoVersion，release_tag=$tagVersion。"
+          }
+
+          "APP_VERSION=$cargoVersion" >> $env:GITHUB_ENV
+          Write-Host "应用版本：$cargoVersion"
+
+      - name: 安装 Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: 构建发布版本
+        shell: pwsh
+        run: |
+          cargo build --release `
+            --target x86_64-pc-windows-msvc `
+            -p flux-launcher `
+            -p flow-plugin-fixture `
+            -p flux-plugin-example
+
+          $pluginRoot = Join-Path $env:APPDATA "FluxLauncher\Plugins\NativeFlowFixture"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $pluginRoot |
+            Out-Null
+
+          Copy-Item `
+            ./tests/fixtures/flow-native-plugin/plugin.json `
+            (Join-Path $pluginRoot "plugin.json") `
+            -Force
+
+          Copy-Item `
+            ./target/x86_64-pc-windows-msvc/release/flow-plugin-fixture.exe `
+            (Join-Path $pluginRoot "fixture-plugin.exe") `
+            -Force
+
+      - name: 验证原生插件 Named Pipe
+        shell: pwsh
+        run: |
+          $nativeRoot = Join-Path $env:RUNNER_TEMP "flux-native-plugins"
+          $nativePlugin = Join-Path $nativeRoot "example"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $nativePlugin |
+            Out-Null
+
+          Copy-Item `
+            ./crates/flux-plugin-example/plugin.toml `
+            (Join-Path $nativePlugin "plugin.toml") `
+            -Force
+
+          Copy-Item `
+            ./target/x86_64-pc-windows-msvc/release/flux_plugin_example.dll `
+            (Join-Path $nativePlugin "flux_plugin_example.dll") `
+            -Force
+
+          ./scripts/native-plugin-pipe-smoke.ps1 `
+            -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -PluginRoot $nativeRoot
+
+      - name: 运行 Windows 更新与设置回归测试
+        shell: pwsh
+        run: |
+          cargo test `
+            -p flux-launcher `
+            -p flux-core `
+            --target x86_64-pc-windows-msvc `
+            --all-targets
+
+      - name: 验证快捷方式图标
+        shell: pwsh
+        run: |
+          ./scripts/shortcut-icon-smoke.ps1 `
+            -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -WorkDirectory ./artifacts/windows-ui-release/shortcut-icon-smoke
+
+      - name: 验证单实例与 Everything 进程保护
+        shell: pwsh
+        run: |
+          ./scripts/single-instance-smoke.ps1 `
+            -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -WorkDirectory ./artifacts/windows-ui-release/single-instance-smoke
+
+      - name: 捕获 UI 状态并验证原生预览窗口
+        shell: pwsh
+        env:
+          WINDUI_D2D: "1"
+          FLUX_DISABLE_UPDATE_CHECKS: "1"
+          FLUX_DISABLE_EVERYTHING_PROMPT: "1"
+        run: |
+          ./scripts/capture-mica.ps1 `
+            -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -OutputDirectory ./artifacts/windows-ui-release `
+            -QueryResponsivenessSmoke `
+            -ImeMessageSmoke `
+            -FocusToggleSmoke `
+            -DeactivationClickSmoke `
+            -FolderLaunchSmoke `
+            -ActionBarSmoke `
+            -CommandPrioritySmoke `
+            -ObsidianIconSmoke `
+            -VisualSettingsSmoke
+
+      - name: 上传 Windows UI 验证诊断
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flux-launcher-windows-ui-smoke-diagnostics
+          path: artifacts/windows-ui-release
+          if-no-files-found: warn
+
+      - name: 签名稳定版启动器
+        if: inputs.release_channel == 'stable'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          ./scripts/sign-windows-release.ps1 `
+            -Files @(
+              "./target/x86_64-pc-windows-msvc/release/flux-launcher.exe"
+            ) `
+            -RequireSigning
+
+      - name: 构建安装程序与便携版
+        shell: pwsh
+        run: |
+          ./scripts/build-installer.ps1 `
+            -AppVersion "$env:APP_VERSION" `
+            -OutputDirectory ./artifacts/windows-ui-release/package
+
+          Get-ChildItem `
+            ./artifacts/windows-ui-release/package `
+            -File `
+            -Recurse |
+            Get-FileHash -Algorithm SHA256 |
+            Format-Table -AutoSize
+
+      - name: 签名稳定版发布产物
+        if: inputs.release_channel == 'stable'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          ./scripts/sign-windows-release.ps1 `
+            -ArtifactDirectory ./artifacts/windows-ui-release/package `
+            -RequireSigning
+
+      - name: 验证安装、启动项、托盘启动与卸载
+        shell: pwsh
+        run: |
+          ./scripts/installer-smoke.ps1 `
+            -Installer ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe `
+            -ExpectedExe ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -WorkDirectory ./artifacts/windows-ui-release/installer-smoke
+
+      - name: 验证自更新进度、响应性、交接与重启
+        shell: pwsh
+        run: |
+          ./scripts/update-smoke.ps1 `
+            -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
+            -Installer ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe `
+            -WorkDirectory ./artifacts/windows-ui-release/update-smoke `
+            -CurrentVersion "$env:APP_VERSION"
+
+      - name: 上传 Windows 发布产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FluxLauncher-Windows11-x64
+          path: artifacts/windows-ui-release/package
+          if-no-files-found: error
+
+      - name: 校验发布说明
+        if: inputs.publish_release
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ inputs.release_notes }}")) {
+            throw "创建 GitHub Release 前必须填写人工校对的发布说明。"
+          }
+
+      - name: 创建或更新 GitHub Release
+        if: inputs.publish_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: Flux Launcher ${{ inputs.release_tag }}
+          prerelease: ${{ inputs.release_channel == 'beta' }}
+          make_latest: ${{ inputs.release_channel == 'stable' }}
+          generate_release_notes: false
+          body: |
+            ${{ inputs.release_notes }}
+
+            ## 下载
+
+            - [安装程序](https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/FluxLauncher-Setup.exe)
+            - [便携版](https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/FluxLauncher-Portable.exe)
+
+            ## Windows 验证
+
+            该版本已运行 Windows UI、安装器及相关烟雾测试。
+            GitHub Windows runner 的截图仅作为渲染路径证据，不能替代实体 Windows 11 上的 DWM Acrylic / Mica 观察。
+
+            安装程序为主要下载项，便携版为次要下载项。
+
+          files: |
+            ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe
+            ./artifacts/windows-ui-release/package/FluxLauncher-Portable.exe

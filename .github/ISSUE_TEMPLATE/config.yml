@@ -1,8 +1,10 @@
 blank_issues_enabled: false
+
 contact_links:
-  - name: Usage question or discussion
-    url: https://github.com/m1nuzz/flux-launcher/discussions
-    about: Ask usage questions and discuss ideas without opening a bug report.
-  - name: Security vulnerability
-    url: https://github.com/m1nuzz/flux-launcher/security/advisories/new
-    about: Report security vulnerabilities privately through a GitHub security advisory.
+  - name: 使用问题或讨论
+    url: https://github.com/lvxingqi/flux-launcher-cn/discussions
+    about: 关于使用方法、功能想法等内容，请在 Discussions 中讨论，不要创建 Bug 报告。
+
+  - name: 安全漏洞
+    url: https://github.com/lvxingqi/flux-launcher-cn/security/advisories/new
+    about: 请通过 GitHub Security Advisory 私下报告安全漏洞，不要公开创建 Issue。

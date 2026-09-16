@@ -1,64 +1,65 @@
-name: "Feature request"
-description: Suggest an improvement or new feature for Flux Launcher
+name: "功能请求"
+description: "为 Flux Launcher 提议新功能或改进"
 title: "FEATURE: "
 labels:
   - enhancement
+
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Flux Launcher.
-        Please search existing issues first and remove private information from screenshots or examples.
+        感谢你帮助改进 Flux Launcher。
+        提交前请先搜索现有 Issue，并确保截图、示例或附件中不包含私人信息。
 
   - type: checkboxes
     id: checks
     attributes:
-      label: Before submitting
+      label: 提交前检查
       options:
-        - label: I have searched the existing issues and did not find a duplicate.
+        - label: 我已搜索现有 Issue，未发现重复请求。
           required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem or use case
-      description: What problem would this feature solve, and who would benefit from it?
-      placeholder: Describe the workflow that is currently difficult or unavailable.
+      label: 问题或使用场景
+      description: 这个功能想解决什么问题？哪些用户会从中受益？
+      placeholder: 描述目前难以完成或尚未支持的工作流程。
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed solution
-      description: Describe the behavior or interface you would like to see.
-      placeholder: Explain what Flux Launcher should do.
+      label: 建议方案
+      description: 描述你希望看到的功能行为或界面。
+      placeholder: 说明 Flux Launcher 应该如何工作。
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considered
-      description: Describe any workaround, alternative design, or behavior in Flow Launcher or another application.
+      label: 已考虑的替代方案
+      description: 描述目前使用的替代方案、临时解决方法，或 Flow Launcher / 其他应用中的类似行为。
 
   - type: input
     id: flux-version
     attributes:
-      label: Flux Launcher version
-      description: Include the release tag or commit if this request depends on a specific version.
-      placeholder: "Example: v0.1.112"
+      label: Flux Launcher 版本
+      description: 如果请求依赖特定版本，请提供 Release 标签或 commit。
+      placeholder: "例如：v0.1.112"
 
   - type: textarea
     id: additional-context
     attributes:
-      label: Additional context
-      description: Add examples, links, mockups, screenshots, or other context. Redact private information.
+      label: 其他上下文
+      description: 可添加示例、链接、设计稿、截图或其他有帮助的信息。请先删除私人信息。
 
   - type: checkboxes
     id: terms
     attributes:
-      label: Final checks
+      label: 最终确认
       options:
-        - label: I understand that this is a feature request rather than a bug report.
+        - label: 我确认这是功能请求，而不是 Bug 报告。
           required: true

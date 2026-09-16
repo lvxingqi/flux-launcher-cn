@@ -1,75 +1,76 @@
-name: "Bug report"
-description: Report a reproducible problem with Flux Launcher
+name: "Bug 报告"
+description: "报告 Flux Launcher 中可以复现的问题"
 title: "BUG: "
 labels:
   - bug
+
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a problem with Flux Launcher.
-        Please do not include passwords, tokens, private file names, or other personal data in screenshots or logs.
+        感谢你花时间报告 Flux Launcher 的问题。
+        请不要在截图或日志中包含密码、令牌、私人文件名、个人路径或其他敏感信息。
 
   - type: checkboxes
     id: checks
     attributes:
-      label: Before submitting
+      label: 提交前检查
       options:
-        - label: I have searched the existing issues and did not find a duplicate.
+        - label: 我已搜索现有 Issue，未发现重复问题。
           required: true
-        - label: I am using the latest available Flux Launcher release or have included my exact version below.
+        - label: 我正在使用最新的 Flux Launcher 版本，或已在下方提供准确版本号。
           required: true
-        - label: I have removed passwords, tokens, private paths, and other sensitive data from attached logs.
+        - label: 我已从日志和附件中删除密码、令牌、私人路径及其他敏感信息。
           required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: What happened?
-      description: Describe what you observed and what you expected to happen.
-      placeholder: Tell us what went wrong and what the expected behavior was.
+      label: 发生了什么？
+      description: 描述你观察到的问题，以及你原本期望发生什么。
+      placeholder: 请描述实际行为和预期行为。
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to reproduce
-      description: Provide the smallest exact sequence that reproduces the problem.
+      label: 复现步骤
+      description: 提供能够稳定复现问题的最小、准确操作步骤。
       value: |
-        1. Start Flux Launcher.
-        2. Press ...
-        3. Type ...
-        4. Observe ...
+        1. 启动 Flux Launcher。
+        2. 按下……
+        3. 输入……
+        4. 观察……
     validations:
       required: true
 
   - type: input
     id: flux-version
     attributes:
-      label: Flux Launcher version
-      description: Include the release tag or commit/build number if using a prerelease or locally built version.
-      placeholder: "Example: v0.1.112 or commit 1234567"
+      label: Flux Launcher 版本
+      description: 如果使用预发布版或本地构建，请提供 Release 标签、commit 或构建编号。
+      placeholder: "例如：v0.1.112 或 commit 1234567"
     validations:
       required: true
 
   - type: input
     id: windows-version
     attributes:
-      label: Windows version and build
-      description: Run `winver` or `systeminfo` and provide the Windows edition, version, and OS build.
-      placeholder: "Example: Windows 11 24H2, OS Build 26100.4652"
+      label: Windows 版本与构建号
+      description: 可运行 `winver` 或 `systeminfo` 查看 Windows 版本、版本号和 OS Build。
+      placeholder: "例如：Windows 11 24H2，OS Build 26100.4652"
     validations:
       required: true
 
   - type: dropdown
     id: architecture
     attributes:
-      label: System architecture
+      label: 系统架构
       options:
         - x64
         - ARM64
-        - Other
+        - 其他
       default: 0
     validations:
       required: true
@@ -77,11 +78,11 @@ body:
   - type: dropdown
     id: installation
     attributes:
-      label: Installation type
+      label: 安装方式
       options:
-        - Installer
-        - Portable
-        - Built from source
+        - 安装程序
+        - 便携版
+        - 源码构建
       default: 0
     validations:
       required: true
@@ -89,17 +90,17 @@ body:
   - type: dropdown
     id: display-language
     attributes:
-      label: Windows display language
-      description: What language is Windows using for its interface?
+      label: Windows 显示语言
+      description: Windows 当前使用什么语言显示界面？
       options:
         - English
-        - Simplified Chinese
-        - Traditional Chinese
-        - Russian
-        - German
-        - French
-        - Spanish
-        - Other
+        - 简体中文
+        - 繁體中文
+        - Русский
+        - Deutsch
+        - Français
+        - Español
+        - 其他
       default: 0
     validations:
       required: true
@@ -107,32 +108,32 @@ body:
   - type: input
     id: keyboard-layouts
     attributes:
-      label: Installed keyboard layouts and input languages
-      description: List the layouts installed in Windows, for example `English (US); Chinese (Simplified) - Microsoft Pinyin`.
-      placeholder: "Example: English (US); Chinese (Simplified) - Microsoft Pinyin"
+      label: 已安装的键盘布局与输入语言
+      description: 列出 Windows 中安装的布局，例如 `English (US); Chinese (Simplified) - Microsoft Pinyin`。
+      placeholder: "例如：English (US); Chinese (Simplified) - Microsoft Pinyin"
     validations:
       required: true
 
   - type: input
     id: active-layout
     attributes:
-      label: Active keyboard layout when the issue occurred
-      description: Which layout/input method was active at the exact moment of the failure?
-      placeholder: "Example: Chinese (Simplified) - Microsoft Pinyin"
+      label: 问题发生时的活动键盘布局
+      description: 请提供故障发生的准确时刻正在使用的布局或输入法。
+      placeholder: "例如：Chinese (Simplified) - Microsoft Pinyin"
     validations:
       required: true
 
   - type: dropdown
     id: keyboard-type
     attributes:
-      label: Keyboard type
+      label: 键盘类型
       options:
-        - Physical USB keyboard
-        - Physical Bluetooth keyboard
-        - Laptop keyboard
-        - On-screen keyboard
-        - Remote Desktop or virtual machine keyboard
-        - Other
+        - 物理 USB 键盘
+        - 物理 Bluetooth 键盘
+        - 笔记本电脑键盘
+        - 屏幕键盘
+        - 远程桌面或虚拟机键盘
+        - 其他
       default: 0
     validations:
       required: true
@@ -140,67 +141,67 @@ body:
   - type: checkboxes
     id: input-method-state
     attributes:
-      label: Input method details
-      description: Select all that applied when the issue occurred.
+      label: 输入法状态
+      description: 选择问题发生时符合的情况。
       options:
-        - label: A Chinese/Japanese/Korean IME was enabled.
-        - label: IME composition or candidate selection was active.
-        - label: The issue also occurs with an English/US layout.
-        - label: The issue occurs only after switching layouts.
-        - label: The issue occurs only when Flux is launched at startup or from the tray.
+        - label: 当时启用了中日韩输入法（IME）。
+        - label: 当时正在进行 IME 组合输入或候选词选择。
+        - label: 使用英文 / US 布局时同样会出现问题。
+        - label: 只有切换键盘布局后才会出现问题。
+        - label: 只有 Flux 在系统启动或托盘启动后才会出现问题。
 
   - type: input
     id: hotkey
     attributes:
-      label: Hotkey or key sequence used
-      description: Include the configured global hotkey and the exact keys that did or did not work.
-      placeholder: "Example: Alt+Space opens Flux, but letters are not accepted"
+      label: 使用的热键或按键序列
+      description: 请提供当前配置的全局热键，以及实际有效或无效的按键。
+      placeholder: "例如：Alt+Space 可以打开 Flux，但字母无法输入"
     validations:
       required: true
 
   - type: textarea
     id: keyboard-comparison
     attributes:
-      label: Keyboard comparison
-      description: State whether the same keyboard and layout work in Notepad, Start Menu search, another native app, and Flux after restarting it.
+      label: 键盘输入对比
+      description: 请说明相同键盘和布局在记事本、开始菜单搜索、其他原生应用以及 Flux 重启后是否正常。
       placeholder: |
-        Notepad: works / does not work
-        Start Menu search: works / does not work
-        Flux after restart: works / does not work
+        记事本：正常 / 异常
+        开始菜单搜索：正常 / 异常
+        Flux 重启后：正常 / 异常
 
   - type: dropdown
     id: input-scope
     attributes:
-      label: What is affected?
+      label: 受影响的范围
       multiple: true
       options:
-        - Global hotkey does not open Flux
-        - Letters are not accepted in the search box
-        - Numbers or symbols are not accepted
-        - Enter or navigation keys do not work
-        - Input works in English but not in another layout
-        - Input stops after switching IME/layout
-        - Other
+        - 全局热键无法打开 Flux
+        - 搜索框无法输入字母
+        - 无法输入数字或符号
+        - Enter 或导航按键无效
+        - 英文输入正常，但其他布局异常
+        - 切换 IME / 布局后输入失效
+        - 其他
     validations:
       required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: Logs and diagnostics
-      description: Paste relevant log output or drag and drop sanitized files. Do not include secrets or private data.
+      label: 日志与诊断信息
+      description: 粘贴相关日志，或拖入已脱敏的日志文件。请勿包含密码、令牌、私人路径或其他敏感信息。
       render: text
 
   - type: textarea
     id: screenshots
     attributes:
-      label: Screenshots or recordings
-      description: Add screenshots or a short recording if they help demonstrate the problem. Redact private information.
+      label: 截图或录屏
+      description: 如有助于说明问题，请添加截图或短视频。请先遮盖私人信息。
 
   - type: checkboxes
     id: terms
     attributes:
-      label: Final checks
+      label: 最终确认
       options:
-        - label: I can provide additional diagnostic details if requested.
+        - label: 如有需要，我可以提供进一步的诊断信息。
           required: true

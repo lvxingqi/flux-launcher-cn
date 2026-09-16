@@ -1,4 +1,4 @@
-name: WinGet manifest validation
+name: WinGet Manifest 验证
 
 on:
   push:
@@ -7,11 +7,13 @@ on:
       - "packaging/winget/manifests/**"
       - "scripts/generate-winget-manifest.ps1"
       - ".github/workflows/winget-manifest.yml"
+
   pull_request:
     paths:
       - "packaging/winget/manifests/**"
       - "scripts/generate-winget-manifest.ps1"
       - ".github/workflows/winget-manifest.yml"
+
   workflow_dispatch:
 
 permissions:
@@ -20,60 +22,148 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Update App Installer / WinGet
+      - name: 更新 App Installer / WinGet
         shell: pwsh
         run: |
-          winget upgrade --id Microsoft.AppInstaller --exact --accept-package-agreements --accept-source-agreements --disable-interactivity
+          winget upgrade `
+            --id Microsoft.AppInstaller `
+            --exact `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+
           $upgradeExitCode = $LASTEXITCODE
+
           Start-Sleep -Seconds 3
+
           $versionText = (winget --version).Trim().TrimStart("v")
           $version = [version]$versionText
+
           if ($version -lt [version]"1.12.0") {
-            throw "WinGet $versionText is too old for schema 1.12 after App Installer upgrade (exit code $upgradeExitCode)."
-          }
-          if ($upgradeExitCode -ne 0) {
-            Write-Host "App Installer reported exit code $upgradeExitCode after completing the upgrade; continuing with WinGet $versionText."
+            throw "WinGet $versionText is too old for schema 1.12 validation (exit code $upgradeExitCode)."
           }
 
-      - name: Show WinGet version
+          if ($upgradeExitCode -ne 0) {
+            Write-Host "App Installer returned exit code $upgradeExitCode after the upgrade; continuing with WinGet $versionText."
+          }
+
+      - name: 验证 WinGet 版本
         shell: pwsh
         run: |
           winget --info
+
           $versionText = (winget --version).Trim().TrimStart("v")
           $version = [version]$versionText
+
           if ($version -lt [version]"1.12.0") {
-            throw "WinGet $versionText is too old for the required schema 1.12 validation."
+            throw "WinGet $versionText is too old for schema 1.12 validation."
           }
 
-      - name: Validate manifest set
+      - name: 验证 WinGet Manifest
         shell: pwsh
         run: |
           $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
           $manifestRoots = @(Get-ChildItem $packageRoot -Directory)
+
           if ($manifestRoots.Count -eq 0) {
-            throw "No versioned WinGet manifest directories were found."
+            throw "未找到版本化 WinGet manifest 目录。"
           }
+
           foreach ($manifestRoot in $manifestRoots) {
             $manifestFiles = @(Get-ChildItem $manifestRoot.FullName -Filter "*.yaml" -File)
+
             if ($manifestFiles.Count -ne 3) {
-              throw "Expected exactly three manifest files in $($manifestRoot.FullName), found $($manifestFiles.Count)."
+              throw "目录 $($manifestRoot.FullName) 必须包含 3 个 manifest 文件，实际找到 $($manifestFiles.Count) 个。"
             }
+
             winget validate --manifest $manifestRoot.FullName
           }
 
-      - name: Verify official installer hash
+      - name: 检查包标识与目录结构
         shell: pwsh
         run: |
-          $url = "https://github.com/m1nuzz/flux-launcher/releases/download/v0.1.54/FluxLauncher-Setup.exe"
-          $expected = "44E5A300C38B50EA8768C4536C8B2B88E26B5B433958C6DB1B9EF63DB8826D59"
-          $path = Join-Path $env:RUNNER_TEMP "FluxLauncher-Setup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $path
-          $actual = (Get-FileHash $path -Algorithm SHA256).Hash
-          if ($actual -ne $expected) {
-            throw "Stable installer hash mismatch: expected $expected, got $actual."
+          $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
+          $manifestRoots = @(Get-ChildItem $packageRoot -Directory)
+
+          foreach ($manifestRoot in $manifestRoots) {
+            if ($manifestRoot.Name -notmatch '^\d+\.\d+\.\d+$') {
+              throw "非法 WinGet 版本目录：$($manifestRoot.Name)"
+            }
+
+            $manifests = Get-ChildItem $manifestRoot.FullName -Filter "*.yaml" -File
+
+            foreach ($manifest in $manifests) {
+              $content = Get-Content $manifest.FullName -Raw
+
+              if ($content -notmatch 'PackageIdentifier:\s*m1nuzz\.FluxLauncher') {
+                throw "Manifest $($manifest.Name) 的 PackageIdentifier 不正确。"
+              }
+            }
           }
-          Write-Host "Stable installer hash verified: $actual"
+
+      - name: 核验稳定版安装程序
+        shell: pwsh
+        run: |
+          $latestRelease = gh release list `
+            --repo "${{ github.repository }}" `
+            --limit 100 `
+            --json tagName,isPrerelease,isDraft,publishedAt |
+            ConvertFrom-Json |
+            Where-Object {
+              $_.isPrerelease -eq $false -and
+              $_.isDraft -eq $false
+            } |
+            Sort-Object publishedAt -Descending |
+            Select-Object -First 1
+
+          if (-not $latestRelease) {
+            throw "未找到稳定版 GitHub Release。"
+          }
+
+          $tag = $latestRelease.tagName
+          Write-Host "Stable release: $tag"
+
+          $release = gh release view $tag `
+            --repo "${{ github.repository }}" `
+            --json assets |
+            ConvertFrom-Json
+
+          $installer = $release.assets |
+            Where-Object { $_.name -eq "FluxLauncher-Setup.exe" } |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "稳定版 Release $tag 不包含 FluxLauncher-Setup.exe。"
+          }
+
+          $url = $installer.url
+          $path = Join-Path $env:RUNNER_TEMP "FluxLauncher-Setup.exe"
+
+          Invoke-WebRequest -Uri $url -OutFile $path
+
+          $actual = (Get-FileHash $path -Algorithm SHA256).Hash
+
+          Write-Host "Stable installer:"
+          Write-Host "  Release: $tag"
+          Write-Host "  URL: $url"
+          Write-Host "  SHA256: $actual"
+
+      - name: 验证稳定版安装程序存在对应 manifest
+        shell: pwsh
+        run: |
+          $packageRoot = Resolve-Path "packaging/winget/manifests/m/m1nuzz/FluxLauncher"
+
+          $versions = @(Get-ChildItem $packageRoot -Directory |
+            Select-Object -ExpandProperty Name)
+
+          if ($versions.Count -eq 0) {
+            throw "未找到 WinGet 版本目录。"
+          }
+
+          Write-Host "Available WinGet versions:"
+          $versions | ForEach-Object { Write-Host " - $_" }
