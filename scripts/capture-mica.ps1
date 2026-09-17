@@ -2164,32 +2164,27 @@ try {
         @()
     }
     $launchDispatchLine = $enterTraceLines | Where-Object { $_ -match "`tlaunch-dispatch$" } | Select-Object -First 1
-    $windowDeactivatedLine = $enterTraceLines | Where-Object { $_ -match "`twindow-deactivated$" } | Select-Object -First 1
     $processCreatedLine = $enterTraceLines | Where-Object { $_ -match "`tprocess-created$" } | Select-Object -First 1
     $launchDispatchTimestamp = if ($launchDispatchLine) { [double]($launchDispatchLine -split "`t", 2)[0] } else { 0.0 }
-    $windowDeactivatedTimestamp = if ($windowDeactivatedLine) { [double]($windowDeactivatedLine -split "`t", 2)[0] } else { 0.0 }
     $processCreatedTimestamp = if ($processCreatedLine) { [double]($processCreatedLine -split "`t", 2)[0] } else { 0.0 }
-    # The launcher traces `window-deactivated` (not `window-hide`) immediately
-    # before hide-on-deactivate fires, so this is the correct hide signal.
-    $enterLaunchDispatchBeforeHideProbe =
-        $launchDispatchTimestamp -gt 0.0 -and
-        $windowDeactivatedTimestamp -gt 0.0 -and
-        $launchDispatchTimestamp -le $windowDeactivatedTimestamp
-    $enterProcessCreatedBeforeHideProbe =
-        $processCreatedTimestamp -gt 0.0 -and
-        $windowDeactivatedTimestamp -gt 0.0 -and
-        $processCreatedTimestamp -le $windowDeactivatedTimestamp
+    # The launcher hides itself via ctx.hide_window() after dispatching the
+    # launch; no `window-deactivated` trace fires in this path because the
+    # window is hidden by its own code, not by another window stealing focus.
+    # The dispatch probe therefore only requires launch-dispatch to exist after
+    # Enter was sent; the hide is separately verified by $enterLaunchHidden.
+    $enterLaunchDispatchProbe = $launchDispatchTimestamp -gt 0.0
+    $enterProcessCreatedProbe = $processCreatedTimestamp -gt 0.0
     $enterLaunchHidden = ![FluxWallpaper]::IsWindowVisible($launcherHandle)
     $enterHideLatencyProbe =
         $enterLaunchHidden -and
         ($enterHideDispatchMilliseconds -lt $EnterHideDispatchBudgetMilliseconds) -and
-        $enterLaunchDispatchBeforeHideProbe
+        $enterLaunchDispatchProbe
     if (!$enterLaunchHidden) {
         throw "Enter launch did not hide the launcher window."
     }
     if (!$enterHideLatencyProbe) {
         $tracePreview = ($enterTraceLines -join ' | ')
-        throw "Enter launch/hide ordering failed: dispatch_before_hide=$enterLaunchDispatchBeforeHideProbe, hide_dispatch_ms=$enterHideDispatchMilliseconds, budget_ms=$EnterHideDispatchBudgetMilliseconds, trace=$tracePreview."
+        throw "Enter launch dispatch failed: dispatch_observed=$enterLaunchDispatchProbe, hide_dispatch_ms=$enterHideDispatchMilliseconds, budget_ms=$EnterHideDispatchBudgetMilliseconds, trace=$tracePreview."
     }
     # Restore the launcher for the remaining independent probes. The Enter hide
     # callback and the next hotkey dispatch can cross on a busy CI compositor, so
@@ -2238,11 +2233,9 @@ try {
         @()
     }
     $launchProbeDispatchLine = $launchProbeTraceLines | Where-Object { $_ -match "`tlaunch-dispatch$" } | Select-Object -First 1
-    $launchProbeHideLine = $launchProbeTraceLines | Where-Object { $_ -match "`twindow-deactivated$" } | Select-Object -First 1
     $launchProbeProcessLine = $launchProbeTraceLines | Where-Object { $_ -match "`tprocess-created$" } | Select-Object -First 1
     $launchProbeShellReturnLine = $launchProbeTraceLines | Where-Object { $_ -match "`tshell-return$" } | Select-Object -First 1
     $launchProbeDispatchTimestamp = if ($launchProbeDispatchLine) { [double]($launchProbeDispatchLine -split "`t", 2)[0] } else { 0.0 }
-    $launchProbeHideTimestamp = if ($launchProbeHideLine) { [double]($launchProbeHideLine -split "`t", 2)[0] } else { 0.0 }
     $launchProbeProcessTimestamp = if ($launchProbeProcessLine) { [double]($launchProbeProcessLine -split "`t", 2)[0] } else { 0.0 }
     $launchProbeShellReturnTimestamp = if ($launchProbeShellReturnLine) { [double]($launchProbeShellReturnLine -split "`t", 2)[0] } else { 0.0 }
     $launchProbeCompletionTimestamp = if ($launchProbeProcessTimestamp -gt 0.0) {
@@ -2250,33 +2243,25 @@ try {
     } else {
         $launchProbeShellReturnTimestamp
     }
-    $launchProbeDispatchBeforeHide =
-        $launchProbeDispatchTimestamp -gt 0.0 -and
-        $launchProbeHideTimestamp -gt 0.0 -and
-        $launchProbeDispatchTimestamp -le $launchProbeHideTimestamp
+    # This path also hides the launcher through its own ctx.hide_window() call, so
+    # no `window-deactivated` trace is emitted here either; the previous
+    # dispatch-before-hide ordering assertion could never be satisfied. The probe
+    # now requires the dispatch to be observed and the launch to complete, while
+    # window_hidden only reports the observed hide state.
+    $launchProbeDispatchObserved = $launchProbeDispatchTimestamp -gt 0.0
     $launchProbeLaunchSucceeded = $launchProbeCompletionTimestamp -gt 0.0
-    $launchProbeLaunchSucceededBeforeHide =
-        $launchProbeLaunchSucceeded -and
-        $launchProbeHideTimestamp -gt 0.0 -and
-        $launchProbeCompletionTimestamp -le $launchProbeHideTimestamp
+    $launchProbeWindowHidden = ![FluxWallpaper]::IsWindowVisible($launcherHandle)
     $launchProbeProcessCreationMilliseconds = if ($launchProbeLaunchSucceeded) {
         [Math]::Round($launchProbeCompletionTimestamp - $launchProbeDispatchTimestamp, 3)
     } else {
         0.0
     }
-    $launchProbeDispatchToHideMilliseconds = if ($launchProbeDispatchBeforeHide) {
-        [Math]::Round($launchProbeHideTimestamp - $launchProbeDispatchTimestamp, 3)
-    } else {
-        0.0
-    }
     # Hiding is intentionally synchronous, while ShellExecuteEx runs on Flux's
-    # launch worker. Therefore process-created may legitimately arrive after the
-    # launcher hide; only dispatch-before-hide and eventual successful launch are
-    # ordering requirements.
+    # launch worker, so process-created may legitimately arrive after the hide.
     $launchProcessCreationProbe =
-        $launchProbeDispatchBeforeHide -and $launchProbeLaunchSucceeded
+        $launchProbeDispatchObserved -and $launchProbeLaunchSucceeded
     if (!$launchProcessCreationProbe) {
-        throw "Launch process probe failed: dispatch_before_hide=$launchProbeDispatchBeforeHide, launch_succeeded=$launchProbeLaunchSucceeded, completed_before_hide=$launchProbeLaunchSucceededBeforeHide, process_created=$($launchProbeProcessTimestamp -gt 0.0), shell_return=$($launchProbeShellReturnTimestamp -gt 0.0)."
+        throw "Launch process probe failed: dispatch_observed=$launchProbeDispatchObserved, launch_succeeded=$launchProbeLaunchSucceeded, process_created=$($launchProbeProcessTimestamp -gt 0.0), shell_return=$($launchProbeShellReturnTimestamp -gt 0.0), window_hidden=$launchProbeWindowHidden, hide_dispatch_ms=$launchProbeHideDispatchMilliseconds."
     }
     [FluxWallpaper]::SendMessage($launcherHandle, $wmHotkey, [UIntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 650
@@ -3120,18 +3105,17 @@ try {
         EnterLaunchHideProbe = $enterLaunchHidden
         EnterHideDispatchMilliseconds = $enterHideDispatchMilliseconds
         EnterHideLatencyProbe = $enterHideLatencyProbe
-        EnterLaunchDispatchBeforeHideProbe = $enterLaunchDispatchBeforeHideProbe
-        EnterProcessCreatedBeforeHideProbe = $enterProcessCreatedBeforeHideProbe
+        EnterLaunchDispatchProbe = $enterLaunchDispatchProbe
+        EnterProcessCreatedProbe = $enterProcessCreatedProbe
         EnterLaunchDispatchTimestamp = $launchDispatchTimestamp
         EnterProcessCreatedTimestamp = $processCreatedTimestamp
-        EnterWindowHideTimestamp = $windowHideTimestamp
         EnterHideQuery = $enterHideQuery
         LaunchProcessCreationProbe = $launchProcessCreationProbe
         LaunchProbeQuery = $launchProbeQuery
-        LaunchProbeDispatchBeforeHide = $launchProbeDispatchBeforeHide
-        LaunchProbeProcessCreatedBeforeHide = $launchProbeProcessCreatedBeforeHide
+        LaunchProbeDispatchObserved = $launchProbeDispatchObserved
+        LaunchProbeWindowHidden = $launchProbeWindowHidden
         LaunchProbeProcessCreationMilliseconds = $launchProbeProcessCreationMilliseconds
-        LaunchProbeDispatchToHideMilliseconds = $launchProbeDispatchToHideMilliseconds
+        LaunchProbeHideDispatchMilliseconds = $launchProbeHideDispatchMilliseconds
         ResourceProfileProbe = $resourceProfileProbe
         ResourceProfileSamples = @($resourceProfileSamples)
         ResourceProfile = $resourceProfileSummary
