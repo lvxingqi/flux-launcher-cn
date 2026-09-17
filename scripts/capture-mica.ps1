@@ -48,6 +48,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# 烟雾测试必须与产品处于同一坐标空间。pwsh.exe 默认 DPI 不感知：此时
+# GetClientRect/GetWindowRect 返回被显示缩放折算过的虚拟坐标，而 GetDpiForWindow
+# 仍返回真实 DPI。脚本里的 "client / scale"（逻辑换算）与 "* scale"（物理偏移）
+# 因此会在非 100% 缩放下被重复折算，例如 150% 下紧凑高度被算成 37 而不是 56。
+# 把当前线程切到 Per-Monitor v2，使所有 Win32 查询与鼠标坐标统一为物理像素。
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class FluxSmokeDpi {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+}
+'@
+# DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+$previousDpiContext = [FluxSmokeDpi]::SetThreadDpiAwarenessContext([IntPtr](-4))
+Write-Host "Smoke DPI awareness: switched to per-monitor-v2 (previous_handle=$($previousDpiContext.ToInt64()))"
+
 if ($EverythingMissingSmoke) {
     $env:FLUX_SMOKE_EVERYTHING_MISSING = "1"
 } else {
@@ -180,6 +197,36 @@ public static class FluxWallpaper {
     public static bool IsArrowCursor() {
         return GetCursor() == LoadCursor(IntPtr.Zero, new IntPtr(32512)); // IDC_ARROW
     }
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetKeyboardLayout(uint threadId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadKeyboardLayout(string layoutId, uint flags);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetKeyboardLayoutList(int count, IntPtr[] layouts);
+    public static bool IsEnglishKeyboardLayout(IntPtr layout) {
+        // 主语言 ID 位于 HKL 低 10 位：0x09 为 LANG_ENGLISH。
+        return (layout.ToInt64() & 0x03ff) == 0x09;
+    }
+    public static string DescribeKeyboardLayout(IntPtr layout) {
+        return layout == IntPtr.Zero ? "0x0" : string.Format("0x{0:x}", layout.ToInt64());
+    }
+    public static IntPtr[] InstalledKeyboardLayouts() {
+        int count = GetKeyboardLayoutList(0, null);
+        if (count <= 0) {
+            return new IntPtr[0];
+        }
+        IntPtr[] layouts = new IntPtr[count];
+        int written = GetKeyboardLayoutList(count, layouts);
+        if (written <= 0) {
+            return new IntPtr[0];
+        }
+        if (written == count) {
+            return layouts;
+        }
+        IntPtr[] trimmed = new IntPtr[written];
+        Array.Copy(layouts, trimmed, written);
+        return trimmed;
+    }
 }
 '@
 
@@ -298,6 +345,58 @@ function Compare-ScreenshotRegion(
         $first.Dispose()
         $second.Dispose()
     }
+}
+
+function Initialize-FluxKeyboardLayout([IntPtr]$Handle) {
+    # 启动器会在显示时把自身 UI 线程切到英文布局（设置 > 常规 > 键盘布局，默认启用），
+    # 但该切换依赖本机已安装英文布局。中文 Windows 常常只装了中文输入法布局，此时
+    # 下面的物理按键验证会被输入法拦截（先进入组合态，永远产不出 WM_CHAR）。这里在
+    # 缺少英文布局时为本窗口加载系统自带的 US 布局，使烟雾测试保持确定性；已装英文
+    # 布局的主机走空操作分支，保留启动器自身的真实行为。
+    $processId = [uint32]0
+    $threadId = [FluxWallpaper]::GetWindowThreadProcessId($Handle, [ref]$processId)
+    $installed = [FluxWallpaper]::InstalledKeyboardLayouts()
+    $before = [FluxWallpaper]::GetKeyboardLayout($threadId)
+    $loaded = [IntPtr]::Zero
+    if (![FluxWallpaper]::IsEnglishKeyboardLayout($before)) {
+        $target = [IntPtr]::Zero
+        foreach ($layout in $installed) {
+            if ([FluxWallpaper]::IsEnglishKeyboardLayout($layout)) {
+                $target = $layout
+                break
+            }
+        }
+        if ($target -eq [IntPtr]::Zero) {
+            # 不使用 KLF_ACTIVATE：只让启动器窗口所在线程切换布局，避免改动本进程。
+            $target = [FluxWallpaper]::LoadKeyboardLayout("00000409", 0)
+            $loaded = $target
+        }
+        if ($target -ne [IntPtr]::Zero) {
+            [FluxWallpaper]::PostMessage($Handle, 0x0050, [UIntPtr]::Zero, $target) | Out-Null
+        }
+        $deadline = (Get-Date).AddSeconds(3)
+        while ((Get-Date) -lt $deadline) {
+            if ([FluxWallpaper]::IsEnglishKeyboardLayout([FluxWallpaper]::GetKeyboardLayout($threadId))) {
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    $after = [FluxWallpaper]::GetKeyboardLayout($threadId)
+    $probe = [ordered]@{
+        ThreadId = $threadId
+        InstalledLayouts = @($installed | ForEach-Object { [FluxWallpaper]::DescribeKeyboardLayout($_) })
+        LayoutBefore = [FluxWallpaper]::DescribeKeyboardLayout($before)
+        LayoutAfter = [FluxWallpaper]::DescribeKeyboardLayout($after)
+        LoadedUsLayout = [FluxWallpaper]::DescribeKeyboardLayout($loaded)
+        EnglishLayoutActive = [FluxWallpaper]::IsEnglishKeyboardLayout($after)
+    }
+    $probe | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $OutputDirectory "keyboard-layout-probe.json")
+    Write-Host "Keyboard layout probe: installed=[$($probe.InstalledLayouts -join ',')] before=$($probe.LayoutBefore) after=$($probe.LayoutAfter) loaded=$($probe.LoadedUsLayout) english_active=$($probe.EnglishLayoutActive)"
+    if (!$probe.EnglishLayoutActive) {
+        throw "Unable to establish an English keyboard layout for the launcher window (installed: $($probe.InstalledLayouts -join ', ')). Physical keystroke probes would be consumed by the host IME; install the English (United States) keyboard layout or run this smoke on the Windows runner."
+    }
+    return $probe
 }
 
 $wallpaperPath = Join-Path $OutputDirectory "mica-probe-wallpaper.png"
@@ -517,6 +616,7 @@ try {
     # only after typing.
     $launcherHandle = Get-LauncherWindowHandle $process
     if ($launcherHandle -eq [IntPtr]::Zero) { throw "Flux launcher has no main window handle after waiting for startup." }
+    $keyboardLayoutProbe = Initialize-FluxKeyboardLayout $launcherHandle
     if (![FluxWallpaper]::IsWindowVisible($launcherHandle)) {
         # With hide-on-deactivate enabled, the runner can take focus before the
         # first sample. Restore the window through the real global activation bind.
