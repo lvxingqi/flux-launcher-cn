@@ -48,6 +48,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 use crate::icons::{
     icon_completion_generation_changed, tray_icon, SHELL_ICON_COMPLETION_GENERATION,
 };
+use crate::launch::trace_launch_event;
 use actions::ActionItem;
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
@@ -2212,9 +2213,11 @@ fn main() {
             let _ = second_instance_sender_for_callback.send(());
         });
     }
+
     app.tray(tray)
         .hide_on_close()
         .hide_on_deactivate()
+        .on_window_deactivated(|| {trace_launch_event("window-deactivated");})
         .focus_first_control_on_show()
         // Keep the HWND background transparent so Acrylic/DWM remains visible
         // through the launcher and its install prompt instead of adding a solid slab.
