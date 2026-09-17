@@ -2164,19 +2164,21 @@ try {
         @()
     }
     $launchDispatchLine = $enterTraceLines | Where-Object { $_ -match "`tlaunch-dispatch$" } | Select-Object -First 1
-    $windowHideLine = $enterTraceLines | Where-Object { $_ -match "`twindow-hide$" } | Select-Object -First 1
+    $windowDeactivatedLine = $enterTraceLines | Where-Object { $_ -match "`twindow-deactivated$" } | Select-Object -First 1
     $processCreatedLine = $enterTraceLines | Where-Object { $_ -match "`tprocess-created$" } | Select-Object -First 1
     $launchDispatchTimestamp = if ($launchDispatchLine) { [double]($launchDispatchLine -split "`t", 2)[0] } else { 0.0 }
-    $windowHideTimestamp = if ($windowHideLine) { [double]($windowHideLine -split "`t", 2)[0] } else { 0.0 }
+    $windowDeactivatedTimestamp = if ($windowDeactivatedLine) { [double]($windowDeactivatedLine -split "`t", 2)[0] } else { 0.0 }
     $processCreatedTimestamp = if ($processCreatedLine) { [double]($processCreatedLine -split "`t", 2)[0] } else { 0.0 }
+    # The launcher traces `window-deactivated` (not `window-hide`) immediately
+    # before hide-on-deactivate fires, so this is the correct hide signal.
     $enterLaunchDispatchBeforeHideProbe =
         $launchDispatchTimestamp -gt 0.0 -and
-        $windowHideTimestamp -gt 0.0 -and
-        $launchDispatchTimestamp -le $windowHideTimestamp
+        $windowDeactivatedTimestamp -gt 0.0 -and
+        $launchDispatchTimestamp -le $windowDeactivatedTimestamp
     $enterProcessCreatedBeforeHideProbe =
         $processCreatedTimestamp -gt 0.0 -and
-        $windowHideTimestamp -gt 0.0 -and
-        $processCreatedTimestamp -le $windowHideTimestamp
+        $windowDeactivatedTimestamp -gt 0.0 -and
+        $processCreatedTimestamp -le $windowDeactivatedTimestamp
     $enterLaunchHidden = ![FluxWallpaper]::IsWindowVisible($launcherHandle)
     $enterHideLatencyProbe =
         $enterLaunchHidden -and
@@ -2236,7 +2238,7 @@ try {
         @()
     }
     $launchProbeDispatchLine = $launchProbeTraceLines | Where-Object { $_ -match "`tlaunch-dispatch$" } | Select-Object -First 1
-    $launchProbeHideLine = $launchProbeTraceLines | Where-Object { $_ -match "`twindow-hide$" } | Select-Object -First 1
+    $launchProbeHideLine = $launchProbeTraceLines | Where-Object { $_ -match "`twindow-deactivated$" } | Select-Object -First 1
     $launchProbeProcessLine = $launchProbeTraceLines | Where-Object { $_ -match "`tprocess-created$" } | Select-Object -First 1
     $launchProbeShellReturnLine = $launchProbeTraceLines | Where-Object { $_ -match "`tshell-return$" } | Select-Object -First 1
     $launchProbeDispatchTimestamp = if ($launchProbeDispatchLine) { [double]($launchProbeDispatchLine -split "`t", 2)[0] } else { 0.0 }
