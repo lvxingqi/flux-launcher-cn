@@ -32,6 +32,11 @@ $firstReleasePath = Join-Path $fixtureRoot "latest.json"
 $stableReleasePath = Join-Path $fixtureRoot "latest-done.json"
 $server = $null
 $launcher = $null
+# 脚本会覆盖 APPDATA/LOCALAPPDATA 指向隔离目录。CI 每个 step 使用全新 shell，
+# 覆盖不影响后续步骤；但本地复用时脚本常在同一会话中连续运行，泄漏会污染后续
+# 命令（真实用户目录）。因此记录原值并在 finally 中恢复。
+$previousAppData = $env:APPDATA
+$previousLocalAppData = $env:LOCALAPPDATA
 
 function Write-JsonFile {
     param(
@@ -125,6 +130,12 @@ Copy-Item -LiteralPath $Installer -Destination $fixtureInstaller -Force
 $installerHash = (Get-FileHash -Algorithm SHA256 -Path $fixtureInstaller).Hash.ToLowerInvariant()
 $port = 18963
 $prefix = "http://127.0.0.1:$port/"
+# 端口被占用时 fixture 服务器的绑定失败发生在子进程里，本脚本察觉不到，
+# 启动器的更新检查会打到未知监听者（例如上一轮残留的服务器，其计数状态
+# 已消费，会返回"无更新"），随后脚本在不相关的等待上超时。这里快速失败。
+if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
+    throw "Update smoke fixture port $port is already in use; stop the stale fixture server and retry."
+}
 $releaseTags = Get-ReleaseTags
 $syntheticLatestTag = $releaseTags[0]
 $currentStableTag = $releaseTags[1]
@@ -169,6 +180,33 @@ $server = Start-Process -FilePath "pwsh" -ArgumentList @(
     "-TransitionFile", $transitionPath
 ) -PassThru -WindowStyle Hidden
 
+# fixture 服务器是异步子进程，pwsh 冷启动 + HttpListener 绑定需要时间；启动器
+# 的首次更新检查没有重试，若在绑定完成前发起会直接失败且不会恢复。启动前先
+# 探测监听就绪（探测未知路径会得到 404，不影响服务器的请求计数与 transition
+# 标记），失败则给出明确错误而不是让脚本在无关的等待上超时。
+$serverReadyDeadline = (Get-Date).AddSeconds(15)
+$serverReady = $false
+while ((Get-Date) -lt $serverReadyDeadline) {
+    if ($server.HasExited) {
+        throw "Update fixture server exited during startup; port $port may be occupied."
+    }
+    try {
+        Invoke-WebRequest -Uri "${prefix}flux-update-smoke-probe" -UseBasicParsing -TimeoutSec 2 | Out-Null
+        $serverReady = $true
+        break
+    }
+    catch {
+        if ($null -ne $_.Exception.Response) {
+            $serverReady = $true
+            break
+        }
+    }
+    Start-Sleep -Milliseconds 250
+}
+if (-not $serverReady) {
+    throw "Update fixture server did not become ready on port $port within 15s."
+}
+
 try {
     $env:APPDATA = $appDataRoot
     $env:LOCALAPPDATA = $appDataRoot
@@ -187,14 +225,16 @@ try {
     Wait-Until -Description "the installer handoff" -Condition {
         (Get-TraceLines | Where-Object { $_ -like "update-installer-started*" }).Count -ge 1
     }
-    Wait-Until -Description "the old launcher process to exit" -Condition {
+    # 安装器交接后旧进程退出与重启的等待放宽到 300s：开发机上未签名安装器的
+    # Defender 实时扫描冷启动可能超过默认的 120s（CI runner 不受影响）。
+    Wait-Until -Description "the old launcher process to exit" -TimeoutSeconds 300 -Condition {
         $launcher.Refresh()
         $launcher.HasExited
     }
-    Wait-Until -Description "the updated install root" -Condition {
+    Wait-Until -Description "the updated install root" -TimeoutSeconds 300 -Condition {
         Test-Path (Join-Path $installRoot "flux-launcher.exe")
     }
-    Wait-Until -Description "the updated launcher restart hidden in the tray" -Condition {
+    Wait-Until -Description "the updated launcher restart hidden in the tray" -TimeoutSeconds 300 -Condition {
         $updated = @(Get-UpdatedLauncherProcesses)
         if ($updated.Count -lt 1) {
             return $false
@@ -265,4 +305,6 @@ finally {
     Remove-Item Env:FLUX_FORCE_UPDATE_CHECK -ErrorAction SilentlyContinue
     Remove-Item Env:FLUX_UPDATE_TRACE_FILE -ErrorAction SilentlyContinue
     Remove-Item Env:FLUX_UPDATE_INSTALL_DIR -ErrorAction SilentlyContinue
+    $env:APPDATA = $previousAppData
+    $env:LOCALAPPDATA = $previousLocalAppData
 }
