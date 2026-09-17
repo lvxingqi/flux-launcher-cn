@@ -2217,7 +2217,9 @@ fn main() {
     app.tray(tray)
         .hide_on_close()
         .hide_on_deactivate()
-        .on_window_deactivated(|| {trace_launch_event("window-deactivated");})
+        .on_window_deactivated(|| {
+            trace_launch_event("window-deactivated");
+        })
         .focus_first_control_on_show()
         // Keep the HWND background transparent so Acrylic/DWM remains visible
         // through the launcher and its install prompt instead of adding a solid slab.
