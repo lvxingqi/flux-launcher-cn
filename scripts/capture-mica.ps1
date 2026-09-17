@@ -187,6 +187,20 @@ public static class FluxWallpaper {
         info.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
         return GetCursorInfo(out info) && (info.flags & 0x00000001) != 0;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetGUIThreadInfo(uint threadId, out GUITHREADINFO info);
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr GetCursor();
     [DllImport("user32.dll", SetLastError = true)]
@@ -2122,6 +2136,19 @@ try {
     [FluxWallpaper]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
     [FluxWallpaper]::keybd_event(0x10, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 50
+    # 部分主流 runner 上前台窗口虽是 Flux，但键盘焦点尚未落到搜索框，Enter 会被
+    # 路由到别处，使 launch-dispatch 晚于 hide-on-deactivate 形成逆序。这里等待
+    # 前台线程的 GUI 焦点真正落在启动器窗口上；超时仅跳过等待，不视为失败。
+    $enterFocusDeadline = (Get-Date).AddSeconds(1)
+    while ((Get-Date) -lt $enterFocusDeadline) {
+        $enterFocusInfo = New-Object FluxWallpaper+GUITHREADINFO
+        $enterFocusInfo.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][FluxWallpaper+GUITHREADINFO])
+        if ([FluxWallpaper]::GetGUIThreadInfo(0, [ref]$enterFocusInfo) -and
+            $enterFocusInfo.hwndFocus -eq $launcherHandle) {
+            break
+        }
+        Start-Sleep -Milliseconds 20
+    }
     # Send Enter to the exact launcher HWND after direct Home/Down selection. This
     # keeps the ordering assertion deterministic while the surrounding smoke suite
     # already covers real keyboard input and global hotkey restoration.
