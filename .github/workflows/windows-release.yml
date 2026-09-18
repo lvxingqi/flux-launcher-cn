@@ -38,9 +38,15 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: windows-release-${{ inputs.release_tag }}
+  # 发布任务不自动取消：同一 tag 的并发运行必须串行完成，由维护者决定如何处理。
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ${{ inputs.runner_label || 'windows-latest' }}
+    timeout-minutes: 60
 
     steps:
       - name: 检出代码
@@ -64,7 +70,13 @@ jobs:
             throw "无法从 Cargo metadata 获取 flux-launcher 版本。"
           }
 
-          $tagVersion = "${{ inputs.release_tag }}".TrimStart("v")
+          $releaseTag = "${{ inputs.release_tag }}"
+
+          if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
+            throw "Release 标签必须符合 vX.Y.Z 格式，实际为 '$releaseTag'。"
+          }
+
+          $tagVersion = $releaseTag.TrimStart("v")
 
           if ($cargoVersion -ne $tagVersion) {
             throw "版本不一致：Cargo=$cargoVersion，release_tag=$tagVersion。"
