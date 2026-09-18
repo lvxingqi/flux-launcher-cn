@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, LazyLock, Mutex};
 use std::thread;
 
 use flux_core::{matches_search_text, rank_results, ResultKind, ResultSource, SearchResult};
@@ -175,7 +175,7 @@ pub(crate) fn canonical_application_key(result: &SearchResult) -> Option<String>
         return None;
     }
     if let Some(target) = result.target.as_deref() {
-        if let Some(identity) = canonical_target_key(target) {
+        if let Some(identity) = canonical_target_key_cached(target) {
             return Some(identity);
         }
     }
@@ -199,7 +199,36 @@ fn is_mergeable_application_result(result: &SearchResult) -> bool {
 }
 
 pub(crate) fn canonical_application_id(target: &str) -> Option<String> {
-    canonical_target_key(target).map(|identity| format!("application:target:{identity}"))
+    canonical_target_key_cached(target).map(|identity| format!("application:target:{identity}"))
+}
+
+/// `canonical_target_key` 的进程级缓存（按原始目标串，含全部结果形态）。
+///
+/// `.lnk` 的 shell 解析与 `fs::canonicalize` 单次可达数百毫秒且会话内结果基本不变。
+/// 此前 UI 线程在响应处理器里对结果集逐条重新解析（实测单帧阻塞 3 秒以上），且每次
+/// 按键重复。缓存把解析成本留在首次出现的线程——应用目录加载与 Everything worker
+/// 都在后台线程调用本函数，UI 线程的合并路径因此退化为内存查找。
+static CANONICAL_TARGET_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const MAX_CANONICAL_TARGET_CACHE_ENTRIES: usize = 4096;
+
+pub(crate) fn canonical_target_key_cached(target: &str) -> Option<String> {
+    if target.trim().is_empty() {
+        return None;
+    }
+    let mut cache = CANONICAL_TARGET_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(hit) = cache.get(target) {
+        return hit.clone();
+    }
+    let computed = canonical_target_key(target);
+    if cache.len() >= MAX_CANONICAL_TARGET_CACHE_ENTRIES {
+        // 容量上限自愈：一次性清空（条目后续按需重建，正确性不受影响）。
+        cache.clear();
+    }
+    cache.insert(target.to_owned(), computed.clone());
+    computed
 }
 
 pub(crate) fn canonical_target_key(target: &str) -> Option<String> {
@@ -678,8 +707,9 @@ fn _keep_os_string_type_available(_: OsString) {}
 mod tests {
     use super::{
         application_matches_query, canonical_application_id, canonical_application_key,
-        canonical_target_key, expand_percent_variables, extract_executable_target,
-        is_executable_target, merge_catalog_candidates, ApplicationCatalog,
+        canonical_target_key, canonical_target_key_cached, expand_percent_variables,
+        extract_executable_target, is_executable_target, merge_catalog_candidates,
+        ApplicationCatalog,
     };
     use flux_core::{ResultKind, ResultSource, SearchResult};
 
@@ -695,6 +725,34 @@ mod tests {
             second.as_deref(),
             Some("c:\\program files\\google\\chrome\\chrome.exe")
         );
+    }
+
+    #[test]
+    fn canonical_target_cache_is_consistent_with_direct_resolution() {
+        let target = r"C:\Program Files\Google\Chrome\chrome.exe";
+        let direct = canonical_target_key(target);
+        let first = canonical_target_key_cached(target);
+        let second = canonical_target_key_cached(target);
+        assert_eq!(direct, first);
+        assert_eq!(first, second);
+
+        // 未安装 / 解析失败的目标同样走缓存，且与直连解析一致。
+        let missing = r"C:\__flux_missing__\demo.lnk";
+        let missing_direct = canonical_target_key(missing);
+        assert_eq!(canonical_target_key_cached(missing), missing_direct);
+        assert_eq!(canonical_target_key_cached(missing), missing_direct);
+    }
+
+    #[test]
+    fn canonical_target_cache_survives_poisoned_mutex() {
+        // 让持锁线程 panic 毒化缓存锁；随后读取必须仍能返回结果（不传播 panic、不死锁）。
+        let handle = std::thread::spawn(|| {
+            let _guard = super::CANONICAL_TARGET_CACHE.lock().unwrap();
+            panic!("模拟持锁线程 panic");
+        });
+        let _ = handle.join();
+        let result = canonical_target_key_cached(r"C:\Program Files\Google\Chrome\chrome.exe");
+        assert!(result.is_some());
     }
 
     #[test]
