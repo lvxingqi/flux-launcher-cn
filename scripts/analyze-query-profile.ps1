@@ -23,7 +23,10 @@ param(
 
     [int]$SlowThresholdMs = 50,
 
-    [int]$TopSlowCount = 15
+    [int]$TopSlowCount = 15,
+
+    # 图标队列上限（同步通道容量 64 + pending 集合），超出即视为写入交错的坏行。
+    [int]$MaxSaneQueueDepth = 512
 )
 
 if (-not (Test-Path $ProfilePath)) {
@@ -41,15 +44,24 @@ $requestDepths = [System.Collections.Generic.List[int]]::new()
 $extractQueued = [System.Collections.Generic.List[int]]::new()
 $extractMisses = 0
 $unknownEvents = [System.Collections.Generic.HashSet[string]]::new()
+$skippedLines = 0
 
 foreach ($line in $lines) {
     $parts = $line -split "`t", 3
-    if ($parts.Count -lt 2) {
+    if ($parts.Count -lt 2 -or $parts[0] -notmatch '^[0-9]+\.[0-9]+$') {
+        # 时间戳缺失或写入交错留下的残片：计为 skipped，不混入 unknownEvents。
+        $skippedLines++
         continue
     }
 
     $eventName = $parts[1]
     $detail = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+
+    if ($eventName -notmatch '^[a-z][a-z0-9-]*$') {
+        # 写入交错会把时间戳残片黏到事件名上（例如 "1789722894363icon-request."）。
+        $skippedLines++
+        continue
+    }
 
     switch ($eventName) {
         'catalog-search' {
@@ -69,7 +81,13 @@ foreach ($line in $lines) {
             if ($fields.Count -ge 2) {
                 $queued = 0
                 if ($fields.Count -ge 3 -and $fields[2] -match 'queued=(\d+)') {
-                    $queued = [int]$Matches[1]
+                    $depth = [int64]$Matches[1]
+                    if ($depth -lt 0 -or $depth -gt $MaxSaneQueueDepth) {
+                        # 写入交错可能把两个数字黏成一个超大值；该行整体不可信。
+                        $skippedLines++
+                        continue
+                    }
+                    $queued = [int]$depth
                 }
                 $hit = $fields[1] -eq 'true'
                 if (-not $hit) {
@@ -87,7 +105,12 @@ foreach ($line in $lines) {
         }
         'icon-request' {
             if ($detail -match 'queued=(\d+)') {
-                $requestDepths.Add([int]$Matches[1])
+                $depth = [int64]$Matches[1]
+                if ($depth -lt 0 -or $depth -gt $MaxSaneQueueDepth) {
+                    $skippedLines++
+                    continue
+                }
+                $requestDepths.Add([int]$depth)
             }
         }
         default {
@@ -123,6 +146,7 @@ function Write-StageSummary {
 
 Write-Host "profile 日志：$ProfilePath"
 Write-Host "样本行数：$($lines.Count)"
+Write-Host "skipped=$skippedLines（时间戳缺失或写入残片，未计入任何统计）"
 Write-Host ''
 
 Write-StageSummary -Name 'catalog-search' -Samples $catalog

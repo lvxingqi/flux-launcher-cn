@@ -250,6 +250,11 @@ pub fn trace_query_profile(event: &str, detail: &str) {
     let _ = write_query_profile_line(std::path::Path::new(&path), event, detail);
 }
 
+/// 诊断日志由 UI 线程与 shell 图标 worker 线程并发追加。行必须一次性写入，
+/// 否则格式化的多段 write 会互相交错，产生无法解析的坏行（见
+/// `doc/plan/u-key-lag-remediation-2026-09-18.md` 步骤 1）。
+static QUERY_PROFILE_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn write_query_profile_line(
     path: &std::path::Path,
     event: &str,
@@ -261,16 +266,32 @@ fn write_query_profile_line(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64() * 1000.0)
         .unwrap_or_default();
+    let line = format!(
+        "{timestamp_ms:.3}\t{event}\t{}\n",
+        sanitize_profile_detail(detail)
+    );
+    // 先整体成行再单次 write_all；锁用于跨线程串行化，避免不同线程的写入互相穿插。
+    let _guard = QUERY_PROFILE_WRITE_LOCK.lock();
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)?;
-    writeln!(file, "{timestamp_ms:.3}\t{event}\t{detail}")
+    file.write_all(line.as_bytes())?;
+    file.flush()
+}
+
+/// detail 中的换行会把一条记录拆成两行无法解析的文本，统一压成空格。
+fn sanitize_profile_detail(detail: &str) -> std::borrow::Cow<'_, str> {
+    if detail.contains(['\r', '\n']) {
+        std::borrow::Cow::Owned(detail.replace(['\r', '\n'], " "))
+    } else {
+        std::borrow::Cow::Borrowed(detail)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_shell_target, write_query_profile_line};
+    use super::{clean_shell_target, sanitize_profile_detail, write_query_profile_line};
 
     #[test]
     fn clean_shell_target_removes_outer_quotes_and_whitespace() {
@@ -301,6 +322,55 @@ mod tests {
         assert!(parts[0].parse::<f64>().is_ok(), "时间戳必须可解析：{line}");
         assert_eq!(parts[1], "catalog-search");
         assert_eq!(parts[2], "1.5ms\t3\tu");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn query_profile_detail_newlines_are_collapsed() {
+        assert_eq!(sanitize_profile_detail("a\tb"), "a\tb");
+        assert_eq!(sanitize_profile_detail("a\r\nb"), "a  b");
+    }
+
+    #[test]
+    fn query_profile_line_is_written_whole_from_concurrent_threads() {
+        let path = std::env::temp_dir().join(format!(
+            "flux-query-profile-concurrent-{}.log",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let writers = ["icon-request", "icon-extract"];
+        std::thread::scope(|scope| {
+            for event in writers {
+                let path = path.clone();
+                scope.spawn(move || {
+                    for line in 0..500 {
+                        write_query_profile_line(
+                            &path,
+                            event,
+                            &format!("queued={}\ttarget-{}.lnk", line % 16, line),
+                        )
+                        .unwrap();
+                    }
+                });
+            }
+        });
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1000,
+            "并发写入不得产生坏行或丢失记录：实际 {}",
+            lines.len()
+        );
+        for line in lines {
+            let parts: Vec<&str> = line.splitn(3, '\t').collect();
+            assert_eq!(parts.len(), 3, "行必须是三段式：{line}");
+            assert!(parts[0].parse::<f64>().is_ok(), "时间戳必须可解析：{line}");
+            assert!(writers.contains(&parts[1]), "事件名必须完整：{line}");
+            assert!(parts[2].starts_with("queued="), "detail 必须完整：{line}");
+        }
         std::fs::remove_file(path).unwrap();
     }
 }
