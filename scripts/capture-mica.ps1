@@ -765,9 +765,30 @@ try {
     # synchronously to the real HWND so the second toggle cannot race the first
     # hidden-window transition or a queued message on the runner.
     $wmHotkey = 0x0312
-    [FluxWallpaper]::SendMessage($launcherHandle, $wmHotkey, [UIntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    Start-Sleep -Milliseconds 450
-    $hiddenAfterFirstHotkey = ![FluxWallpaper]::IsWindowVisible($launcherHandle)
+    # Toggling follows the window's real visibility, so if hide-on-deactivate fired
+    # between the setup above and this dispatch (the hosted runner can steal focus at
+    # any moment) the window is already hidden and the hotkey legitimately *shows* it
+    # again. Retry that case instead of reporting it as a failed hide; a hotkey that
+    # truly does nothing while the window stays visible still fails on every attempt.
+    $hiddenAfterFirstHotkey = $false
+    for ($hotkeyToggleAttempt = 0; $hotkeyToggleAttempt -lt 3 -and !$hiddenAfterFirstHotkey; $hotkeyToggleAttempt++) {
+        if (![FluxWallpaper]::IsWindowVisible($launcherHandle)) {
+            # Restore through the real global activation bind, then re-check.
+            [FluxWallpaper]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+            [FluxWallpaper]::keybd_event(0x20, 0, 0, [UIntPtr]::Zero)
+            [FluxWallpaper]::keybd_event(0x20, 0, 2, [UIntPtr]::Zero)
+            [FluxWallpaper]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 800
+            if (![FluxWallpaper]::IsWindowVisible($launcherHandle)) {
+                continue
+            }
+        }
+        [FluxWallpaper]::SetForegroundWindow($launcherHandle) | Out-Null
+        Start-Sleep -Milliseconds 250
+        [FluxWallpaper]::SendMessage($launcherHandle, $wmHotkey, [UIntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 450
+        $hiddenAfterFirstHotkey = ![FluxWallpaper]::IsWindowVisible($launcherHandle)
+    }
     if ($IdlePerformanceSmoke) {
         if (!$hiddenAfterFirstHotkey) {
             throw "Idle performance probe could not hide the launcher."
