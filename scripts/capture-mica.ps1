@@ -2449,11 +2449,24 @@ try {
     } else {
         Remove-Item Env:FLUX_SMOKE_SETTINGS_TAB -ErrorAction SilentlyContinue
         Remove-Item Env:FLUX_SMOKE_VISUAL_SETTINGS -ErrorAction SilentlyContinue
-        Remove-Item Env:FLUX_DISABLE_SINGLE_INSTANCE -ErrorAction SilentlyContinue
+    }
+    if ($TraySettingsSmoke) {
+        # The Settings child must become an independent instance even without the
+        # visual smoke: it starts hidden like the tray-resident launcher, so the
+        # tray-settings hook produces the only visible frame.
+        $env:FLUX_DISABLE_SINGLE_INSTANCE = "1"
     }
     $settingsStdoutPath = Join-Path $OutputDirectory "settings.stdout.log"
     $settingsStderrPath = Join-Path $OutputDirectory "settings.stderr.log"
-    $settingsProcess = Start-Process -FilePath $Executable -PassThru -RedirectStandardOutput $settingsStdoutPath -RedirectStandardError $settingsStderrPath
+    $settingsArguments = @()
+    if ($TraySettingsSmoke) {
+        # Tray-settings lifecycle smoke: start hidden (--startup) like the real
+        # tray-resident launcher. The smoke hook is then the only activation
+        # path, and its on_window_show callback applies the full Settings size
+        # before the first frame is presented, so no compact frame can flash.
+        $settingsArguments = @("--startup")
+    }
+    $settingsProcess = Start-Process -FilePath $Executable -ArgumentList $settingsArguments -PassThru -RedirectStandardOutput $settingsStdoutPath -RedirectStandardError $settingsStderrPath
     $settingsWindowHeight = 0
     $settingsWindowWidth = 0
     $settingsWindowFound = $false
@@ -2478,11 +2491,17 @@ try {
     try {
         if ($TraySettingsSmoke) {
             $firstFrameChecked = $false
-            for ($attempt = 0; $attempt -lt 30 -and !$firstFrameChecked; $attempt++) {
+            for ($attempt = 0; $attempt -lt 60 -and !$firstFrameChecked; $attempt++) {
                 Start-Sleep -Milliseconds 100
                 $settingsProcess.Refresh()
                 $firstFrameHwnd = Get-LauncherWindowHandle $settingsProcess
                 if ($firstFrameHwnd -eq [IntPtr]::Zero) {
+                    continue
+                }
+                if (![FluxWallpaper]::IsWindowVisible($firstFrameHwnd)) {
+                    # A hidden pre-show HWND still reports the compact default
+                    # rect; only a visible frame can carry the first-frame
+                    # invariant asserted below.
                     continue
                 }
                 $firstFrameRect = New-Object FluxWallpaper+RECT
