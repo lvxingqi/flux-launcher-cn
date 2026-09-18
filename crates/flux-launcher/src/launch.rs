@@ -224,9 +224,42 @@ pub fn open_file_location(_path: &str) -> bool {
     false
 }
 
+/// Append a query-stage profiling event when the diagnostics harness requests it.
+///
+/// `FLUX_QUERY_PROFILE_FILE` opts in; each line is `{unix_ms}\t{event}\t{detail}`,
+/// so a single run can be analyzed as a table. Stages covered today: catalog
+/// search duration, per-icon extraction duration and icon queue depth.
+pub fn trace_query_profile(event: &str, detail: &str) {
+    let Ok(path) = std::env::var("FLUX_QUERY_PROFILE_FILE") else {
+        return;
+    };
+    if path.is_empty() {
+        return;
+    }
+    let _ = write_query_profile_line(std::path::Path::new(&path), event, detail);
+}
+
+fn write_query_profile_line(
+    path: &std::path::Path,
+    event: &str,
+    detail: &str,
+) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let timestamp_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .unwrap_or_default();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(file, "{timestamp_ms:.3}\t{event}\t{detail}")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::clean_shell_target;
+    use super::{clean_shell_target, write_query_profile_line};
 
     #[test]
     fn clean_shell_target_removes_outer_quotes_and_whitespace() {
@@ -243,5 +276,20 @@ mod tests {
         std::fs::create_dir_all(&path).unwrap();
         assert!(clean_shell_target(&format!(r#""{}""#, path.display())).is_dir());
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn query_profile_line_appends_timestamped_event() {
+        let path =
+            std::env::temp_dir().join(format!("flux-query-profile-{}.log", std::process::id()));
+        write_query_profile_line(&path, "catalog-search", "1.5ms\t3\tu").unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let line = contents.lines().last().unwrap();
+        let parts: Vec<&str> = line.splitn(3, '\t').collect();
+        assert_eq!(parts.len(), 3);
+        assert!(parts[0].parse::<f64>().is_ok(), "时间戳必须可解析：{line}");
+        assert_eq!(parts[1], "catalog-search");
+        assert_eq!(parts[2], "1.5ms\t3\tu");
+        std::fs::remove_file(path).unwrap();
     }
 }

@@ -306,8 +306,23 @@ impl ShellIconWorker {
                     if let Ok(mut pending) = pending_for_worker.lock() {
                         pending.remove(&target);
                     }
+                    let remaining = pending_for_worker
+                        .lock()
+                        .map(|pending| pending.len())
+                        .unwrap_or(0);
+                    let started = std::time::Instant::now();
                     #[cfg(windows)]
-                    let _ = shell_icon_rgba(&target);
+                    let icon = shell_icon_rgba(&target);
+                    #[cfg(not(windows))]
+                    let icon: Option<Vec<u8>> = None;
+                    crate::launch::trace_query_profile(
+                        "icon-extract",
+                        &format!(
+                            "{:.1}ms\t{}\tqueued={remaining}",
+                            started.elapsed().as_secs_f64() * 1000.0,
+                            icon.is_some()
+                        ),
+                    );
                     SHELL_ICON_COMPLETION_GENERATION.fetch_add(1, Ordering::Release);
                 }
 
@@ -329,6 +344,15 @@ impl ShellIconWorker {
         if !should_send {
             return;
         }
+        let depth = self
+            .pending
+            .lock()
+            .map(|pending| pending.len())
+            .unwrap_or(0);
+        crate::launch::trace_query_profile(
+            "icon-request",
+            &format!("queued={depth}\t{}", sanitize_target_for_trace(&target)),
+        );
         if self.wake.try_send(target.clone()).is_err() {
             if let Ok(mut pending) = self.pending.lock() {
                 pending.remove(&target);
@@ -338,6 +362,14 @@ impl ShellIconWorker {
 }
 
 static SHELL_ICON_WORKER: OnceLock<ShellIconWorker> = OnceLock::new();
+
+/// 诊断日志只记录文件名，避免把完整路径写进 trace。
+fn sanitize_target_for_trace(target: &str) -> String {
+    std::path::Path::new(target)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| String::from("?"))
+}
 
 fn shell_icon_worker() -> &'static ShellIconWorker {
     SHELL_ICON_WORKER.get_or_init(ShellIconWorker::spawn)

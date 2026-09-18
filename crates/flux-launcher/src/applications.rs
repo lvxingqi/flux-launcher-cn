@@ -96,6 +96,7 @@ impl ApplicationCatalog {
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
+        let started = std::time::Instant::now();
         let normalized = normalize(query);
         if normalized.is_empty() {
             return Vec::new();
@@ -109,6 +110,14 @@ impl ApplicationCatalog {
         rank_results(query, &mut results);
         results.truncate(MAX_APPLICATION_RESULTS);
         trace_application_probe(query, &results);
+        crate::launch::trace_query_profile(
+            "catalog-search",
+            &format!(
+                "{:.1}ms\t{}\t{query}",
+                started.elapsed().as_secs_f64() * 1000.0,
+                results.len()
+            ),
+        );
         results
     }
 }
