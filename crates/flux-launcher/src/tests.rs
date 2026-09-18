@@ -15,7 +15,7 @@ use crate::icons::{
 };
 use crate::query::{
     merge_application_duplicates, normalize_built_in_executable_targets,
-    preserve_everything_file_order, ProviderResults,
+    preserve_everything_file_order, synthesize_path_result, ProviderResults,
 };
 use crate::result_row::hover_position_changed;
 use crate::update_state::{format_bytes, format_update_progress};
@@ -735,4 +735,108 @@ fn everything_prompt_requires_missing_auto_enabled_and_unseen_state() {
     assert!(!should_show_everything_install_prompt(
         false, true, false, true
     ));
+}
+
+#[test]
+fn drive_letter_directory_query_synthesizes_top_result() {
+    let dir = std::env::temp_dir().join(format!("flux-path-pin-dir-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let query = dir.to_string_lossy().into_owned();
+
+    let result = synthesize_path_result(&query).expect("existing directory must synthesize");
+    assert_eq!(result.kind, ResultKind::File);
+    assert_eq!(result.title, query);
+    assert_eq!(result.target.as_deref(), Some(query.as_str()));
+
+    let providers = ProviderResults {
+        everything: vec![SearchResult::file(
+            query.clone(),
+            String::from("dir"),
+            String::new(),
+        )],
+        ..ProviderResults::default()
+    };
+    let merged = providers.merged(&query, &[]);
+    assert_eq!(merged[0].id, result.id);
+    assert_eq!(
+        merged.iter().filter(|item| item.id == result.id).count(),
+        1,
+        "同一路径在结果中只允许出现一次"
+    );
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn drive_letter_query_deduplicates_everything_path_case_insensitively() {
+    let dir = std::env::temp_dir().join(format!("flux-path-pin-case-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let query = dir.to_string_lossy().into_owned();
+    let lower = query.to_ascii_lowercase();
+
+    let providers = ProviderResults {
+        everything: vec![SearchResult::file(
+            lower,
+            String::from("dir"),
+            String::new(),
+        )],
+        ..ProviderResults::default()
+    };
+    let merged = providers.merged(&query, &[]);
+    let pinned = &merged[0];
+    assert_eq!(
+        pinned
+            .target
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
+        query.to_ascii_lowercase()
+    );
+    let same_path_count = merged
+        .iter()
+        .filter(|item| {
+            item.target.as_deref().map(|target| {
+                target.eq_ignore_ascii_case(pinned.target.as_deref().unwrap_or_default())
+            }) == Some(true)
+        })
+        .count();
+    assert_eq!(same_path_count, 1, "大小写不同的同一路径不得重复出现");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn quoted_directory_query_with_trailing_separator_still_synthesizes() {
+    let dir = std::env::temp_dir().join(format!("flux-path-pin-quote-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bare = dir.to_string_lossy().into_owned();
+    let query = format!(r#""{bare}\""#);
+
+    let result = synthesize_path_result(&query)
+        .expect("quoted directory with trailing separator must synthesize");
+    assert_eq!(result.title, bare, "标题不得保留结尾分隔符");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn drive_letter_file_query_synthesizes_with_parent_subtitle() {
+    let dir = std::env::temp_dir().join(format!("flux-path-pin-file-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file_path = dir.join("note.txt");
+    std::fs::write(&file_path, b"flux").unwrap();
+    let query = file_path.to_string_lossy().into_owned();
+
+    let result = synthesize_path_result(&query).expect("existing file must synthesize");
+    assert_eq!(result.title, String::from("note.txt"));
+    assert_eq!(result.subtitle, dir.to_string_lossy());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn non_path_or_missing_queries_do_not_synthesize() {
+    assert!(synthesize_path_result("steam").is_none());
+    assert!(synthesize_path_result("C:").is_none());
+    assert!(synthesize_path_result(r"Q:\definitely-missing\path").is_none());
 }

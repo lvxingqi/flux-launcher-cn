@@ -6,6 +6,8 @@ tray:
   exit: Exit
 search:
   placeholder: Search
+  path_folder_hint: Press Enter to open in File Explorer
+  path_file_hint: Press Enter to open
 action_bar:
   open: Open
   run_as_admin: Run as admin

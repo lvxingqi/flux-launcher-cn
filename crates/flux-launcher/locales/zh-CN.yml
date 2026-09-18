@@ -6,6 +6,8 @@ tray:
   exit: 退出
 search:
   placeholder: 搜索
+  path_folder_hint: 按 Enter 在资源管理器中打开
+  path_file_hint: 按 Enter 打开
 action_bar:
   open: 打开
   run_as_admin: 以管理员身份运行

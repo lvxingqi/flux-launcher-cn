@@ -78,7 +78,7 @@ impl ProviderResults {
         self.applications_ready && (self.everything_ready || !self.built_in.is_empty())
     }
 
-    fn merged(&self, query: &str, priorities: &[String]) -> Vec<SearchResult> {
+    pub(crate) fn merged(&self, query: &str, priorities: &[String]) -> Vec<SearchResult> {
         let mut seen = HashSet::new();
         let collected = self
             .built_in
@@ -93,6 +93,7 @@ impl ProviderResults {
         let mut merged = merge_application_duplicates(collected);
         rank_results_with_priorities(query, &mut merged, priorities);
         preserve_everything_file_order(&mut merged, &self.everything);
+        pin_path_result(&mut merged, query);
         merged.truncate(MAX_VISIBLE_RESULTS);
         trace_query_probe(query, &merged);
         merged
@@ -230,6 +231,78 @@ fn application_source_rank(result: &SearchResult) -> u8 {
         ResultSource::Plugin => 3,
         ResultSource::BuiltIn => 4,
     }
+}
+
+/// 判断文本是否形如盘符绝对路径（例如 `C:\`、`D:/data`）。
+fn looks_like_drive_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+}
+
+fn strip_outer_quotes(value: &str) -> &str {
+    let trimmed = value.trim();
+    trimmed
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .unwrap_or(trimmed)
+}
+
+/// 把形如盘符绝对路径的查询合成为结果：目录用资源管理器打开，文件按默认程序打开。
+/// 路径不存在或查询不是盘符路径时不合成，保持普通搜索行为不变。
+pub(crate) fn synthesize_path_result(query: &str) -> Option<SearchResult> {
+    let candidate = strip_outer_quotes(query);
+    if !looks_like_drive_path(candidate) {
+        return None;
+    }
+    if !std::path::Path::new(candidate).exists() {
+        return None;
+    }
+    // 去掉结尾多余的分隔符，但保留盘符根（如 `C:\`），让标题与 id 稳定。
+    let mut display = candidate.to_owned();
+    while display.len() > 3 && matches!(display.chars().last(), Some('\\') | Some('/')) {
+        display.pop();
+    }
+    let display_path = std::path::Path::new(&display);
+    if display_path.is_dir() {
+        Some(SearchResult::file(
+            display.clone(),
+            display,
+            t!("search.path_folder_hint").into_owned(),
+        ))
+    } else {
+        let title = display_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| display.clone());
+        let subtitle = display_path
+            .parent()
+            .map(|parent| parent.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Some(SearchResult::file(display, title, subtitle))
+    }
+}
+
+/// 把合成的路径结果固定到首位，并移除其他 provider 返回的同一路径（大小写不敏感），避免重复。
+fn pin_path_result(results: &mut Vec<SearchResult>, query: &str) {
+    let Some(path_result) = synthesize_path_result(query) else {
+        return;
+    };
+    let pinned_target = path_result
+        .target
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    results.retain(|result| {
+        result
+            .target
+            .as_deref()
+            .map(|target| target.eq_ignore_ascii_case(&pinned_target))
+            != Some(true)
+    });
+    results.insert(0, path_result);
 }
 
 pub(crate) fn preserve_everything_file_order(
