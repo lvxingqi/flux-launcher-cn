@@ -5,8 +5,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::actions::{actions_for_result, ActionItem};
 use crate::icons::{
-    bundled_icon_rgba, icon_target_for_path, request_shell_icon, trace_result_icon_probe,
-    ResultIconView,
+    bundled_icon_rgba, cached_shell_icon, icon_row_within_eager_window, icon_target_for_path,
+    trace_result_icon_probe, ResultIconView,
 };
 use crate::launch;
 use crate::plugins::{self, PluginAction};
@@ -348,6 +348,13 @@ pub(crate) fn result_row(
     let title = result.title;
     let subtitle = result.subtitle;
     let icon_target = target.as_deref().map(icon_target_for_path);
+    // 行号驱动「立即提取图标」窗口：只对可见窗口内的行发起 shell 图标请求，
+    // 窗口外的行保持字形回退，等选区移动使其进入窗口后由响应式回调补发。
+    let row_index = rows_refresh
+        .get()
+        .iter()
+        .position(|result| result.id == id)
+        .unwrap_or(0);
     let (glyph, glyph_font) = match id.as_str() {
         "empty-recycle-bin" => (String::from("\u{ea99}"), "Segoe Fluent Icons"),
         "open-recycle-bin" => (String::from("\u{e74d}"), "Segoe Fluent Icons"),
@@ -355,13 +362,15 @@ pub(crate) fn result_row(
         _ => (String::from("▣"), LAUNCHER_FONT_FAMILY),
     };
     let icon =
-        bundled_icon_rgba(&id).or_else(|| icon_target.as_deref().and_then(request_shell_icon));
+        bundled_icon_rgba(&id).or_else(|| icon_target.as_deref().and_then(cached_shell_icon));
     let actions = actions_for_result(&result_for_actions, &plugin_actions.borrow());
     trace_result_icon_probe(
         &title,
         target.as_deref(),
         icon_target.as_deref(),
         icon.is_some(),
+        row_index,
+        icon_row_within_eager_window(row_index, selected_index.get()),
     );
     let icon_element = Element::leaf()
         .widget(ResultIconView::new(
@@ -370,6 +379,8 @@ pub(crate) fn result_row(
             glyph_font,
             icon,
             icon_refresh_generation,
+            row_index,
+            selected_index,
         ))
         .reactive()
         .width(32)

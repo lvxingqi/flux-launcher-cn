@@ -14,7 +14,7 @@ use windui::prelude::*;
 use windui::render::Canvas;
 
 #[cfg(windows)]
-pub(crate) const MAX_SHELL_ICON_CACHE_ENTRIES: usize = 128;
+pub(crate) const MAX_SHELL_ICON_CACHE_ENTRIES: usize = 512;
 #[cfg(windows)]
 static SHELL_ICON_CACHE: OnceLock<Mutex<ShellIconCache>> = OnceLock::new();
 pub(crate) static SHELL_ICON_COMPLETION_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -31,7 +31,21 @@ pub(crate) struct ResultIconView {
     fallback_font: &'static str,
     refresh_generation: Signal<u64>,
     last_generation: u64,
+    /// 行在结果列表中的序号与当前选区：图标请求只发生在「立即提取窗口」内的行。
+    row_index: usize,
+    selected_index: Signal<usize>,
+    request_issued: bool,
     pub(crate) image: Option<Image>,
+}
+
+/// 行号是否落在「立即提取图标」窗口内：首屏前 `EAGER_ICON_ROW_COUNT` 行，或当前选区
+/// 向下的 `EAGER_ICON_ROW_COUNT` 行（选区前留一行余量）。选区随键盘导航与悬停移动，
+/// 因此滚动到可见的行会经响应式回调补发请求。
+pub(crate) fn icon_row_within_eager_window(row_index: usize, selected_index: usize) -> bool {
+    let eager = crate::EAGER_ICON_ROW_COUNT;
+    row_index < eager
+        || (row_index + 1 >= selected_index // 允许选区上方一行（余量）
+            && row_index < selected_index.saturating_add(eager))
 }
 
 impl ResultIconView {
@@ -41,6 +55,8 @@ impl ResultIconView {
         fallback_font: &'static str,
         initial_rgba: Option<Vec<u8>>,
         refresh_generation: Signal<u64>,
+        row_index: usize,
+        selected_index: Signal<usize>,
     ) -> Self {
         let image = initial_rgba
             .as_deref()
@@ -51,6 +67,9 @@ impl ResultIconView {
             fallback_font,
             refresh_generation,
             last_generation: refresh_generation.get(),
+            row_index,
+            selected_index,
+            request_issued: false,
             image,
         }
     }
@@ -66,6 +85,25 @@ impl ResultIconView {
         self.image = rgba
             .as_deref()
             .and_then(|bytes| Image::from_rgba(32, 32, bytes).ok());
+    }
+
+    /// 结果集变化后把 shell 图标提取限制在可见窗口内：窗口外的行保持字形回退，
+    /// 直到选区移动使该行进入窗口再补发请求。
+    fn request_pending_icon(&mut self, ctx: &mut EventCtx) {
+        if self.image.is_some() || self.request_issued {
+            return;
+        }
+        let Some(target) = self.target.as_deref() else {
+            return;
+        };
+        if !icon_row_within_eager_window(self.row_index, self.selected_index.get()) {
+            return;
+        }
+        self.request_issued = true;
+        if let Some(rgba) = request_shell_icon(target) {
+            self.image = Image::from_rgba(32, 32, &rgba).ok();
+            ctx.mark_dirty();
+        }
     }
 }
 
@@ -111,12 +149,12 @@ impl Widget for ResultIconView {
 
     fn on_update(&mut self, ctx: &mut EventCtx) {
         let generation = self.refresh_generation.get();
-        if generation == self.last_generation {
-            return;
+        if generation != self.last_generation {
+            self.last_generation = generation;
+            self.refresh_cached_image();
+            ctx.mark_dirty();
         }
-        self.last_generation = generation;
-        self.refresh_cached_image();
-        ctx.mark_dirty();
+        self.request_pending_icon(ctx);
     }
 
     fn on_event(&mut self, _ctx: &mut EventCtx, _event: &Event) -> bool {
@@ -222,6 +260,30 @@ pub(crate) fn icon_completion_generation_changed(previous: u64, current: u64) ->
 
 pub(crate) fn icon_target_for_path(target: &str) -> String {
     resolve_bare_executable_path(target).unwrap_or_else(|| target.to_owned())
+}
+
+/// 从结果集中取出「立即提取窗口」内的图标目标（去重、限量），供空闲预热或
+/// 调试使用；返回的目标可直接交给 `request_shell_icon` 排队。
+pub(crate) fn prewarm_icon_targets(
+    results: &[flux_core::SearchResult],
+    limit: usize,
+) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut targets = Vec::new();
+    for result in results {
+        if targets.len() >= limit {
+            break;
+        }
+        let Some(target) = result.target.as_deref() else {
+            continue;
+        };
+        let icon_target = icon_target_for_path(target);
+        if icon_target.is_empty() || !seen.insert(icon_target.clone()) {
+            continue;
+        }
+        targets.push(icon_target);
+    }
+    targets
 }
 
 #[cfg(windows)]
@@ -381,6 +443,18 @@ fn shell_icon_cache_lookup(target: &str) -> Option<Option<Vec<u8>>> {
     cache.lock().ok().and_then(|mut cache| cache.get(target))
 }
 
+/// 只查缓存不排队：行构建时用它取回已提取的图标；未命中的行由响应式回调
+/// 按可见窗口补发请求（见 `request_pending_icon`）。
+#[cfg(windows)]
+pub(crate) fn cached_shell_icon(target: &str) -> Option<Vec<u8>> {
+    shell_icon_cache_lookup(target).flatten()
+}
+
+#[cfg(not(windows))]
+pub(crate) fn cached_shell_icon(_target: &str) -> Option<Vec<u8>> {
+    None
+}
+
 #[cfg(windows)]
 pub(crate) fn request_shell_icon(target: &str) -> Option<Vec<u8>> {
     if let Some(icon) = shell_icon_cache_lookup(target) {
@@ -400,6 +474,8 @@ pub(crate) fn trace_result_icon_probe(
     target: Option<&str>,
     icon_target: Option<&str>,
     initial_loaded: bool,
+    row_index: usize,
+    eager_window: bool,
 ) {
     let Some(path) = std::env::var_os("FLUX_ICON_PROBE_FILE") else {
         return;
@@ -417,7 +493,7 @@ pub(crate) fn trace_result_icon_probe(
     let icon_target = icon_target.map(sanitize).unwrap_or_default();
     let _ = writeln!(
         file,
-        "title={title}\ttarget={target}\ticon_target={icon_target}\tinitial_loaded={initial_loaded}"
+        "title={title}\ttarget={target}\ticon_target={icon_target}\trow_index={row_index}\teager={eager_window}\tinitial_loaded={initial_loaded}"
     );
 }
 

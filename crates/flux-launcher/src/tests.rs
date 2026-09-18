@@ -9,9 +9,10 @@ use crate::actions::{actions_for_result, quoted_result_path};
 use crate::applications::{canonical_application_id, resolve_bare_executable_path};
 use crate::entry::{is_shutdown_mode, should_claim_single_instance};
 use crate::icons::{
-    bundled_icon_rgba, google_icon_rgba, icon_completion_generation_changed, icon_target_for_path,
-    is_executable_icon_target, obsidian_icon_rgba, parse_internet_shortcut_icon_location,
-    resolve_shortcut_icon_path, ResultIconView, ShellIconCache, MAX_SHELL_ICON_CACHE_ENTRIES,
+    bundled_icon_rgba, google_icon_rgba, icon_completion_generation_changed,
+    icon_row_within_eager_window, icon_target_for_path, is_executable_icon_target,
+    obsidian_icon_rgba, parse_internet_shortcut_icon_location, resolve_shortcut_icon_path,
+    ResultIconView, ShellIconCache, MAX_SHELL_ICON_CACHE_ENTRIES,
 };
 use crate::query::{
     merge_application_duplicates, normalize_built_in_executable_targets,
@@ -168,6 +169,7 @@ fn resolves_relative_shortcut_icon_file_against_shortcut_directory() {
 #[test]
 fn result_icon_view_accepts_valid_cached_rgba_and_keeps_placeholder_on_miss() {
     let generation = windui::prelude::signal(0_u64);
+    let selected = windui::prelude::signal(0_usize);
     let valid = [255_u8, 128, 64, 255].repeat(32 * 32);
     let loaded = ResultIconView::new(
         Some(String::from(r"C:\Program Files\Demo\demo.exe")),
@@ -175,6 +177,8 @@ fn result_icon_view_accepts_valid_cached_rgba_and_keeps_placeholder_on_miss() {
         LAUNCHER_FONT_FAMILY,
         Some(valid),
         generation,
+        0,
+        selected,
     );
     assert!(loaded.image.is_some());
 
@@ -184,8 +188,56 @@ fn result_icon_view_accepts_valid_cached_rgba_and_keeps_placeholder_on_miss() {
         LAUNCHER_FONT_FAMILY,
         None,
         generation,
+        0,
+        selected,
     );
     assert!(pending.image.is_none());
+}
+
+#[test]
+fn icon_request_eager_window_covers_visible_rows_and_selection_neighbourhood() {
+    let eager = crate::EAGER_ICON_ROW_COUNT;
+    // 首屏：前 K 行（可见行 + 余量）始终立即请求。
+    assert!(icon_row_within_eager_window(0, 0));
+    assert!(icon_row_within_eager_window(eager - 1, 0));
+    assert!(!icon_row_within_eager_window(eager, 0));
+    // 键盘 / 悬停移动选区：选区行及其下 K 行进入窗口，允许选区上方一行余量。
+    let selected = 20;
+    assert!(icon_row_within_eager_window(selected, selected));
+    assert!(icon_row_within_eager_window(selected - 1, selected));
+    assert!(icon_row_within_eager_window(selected + eager - 1, selected));
+    assert!(!icon_row_within_eager_window(selected + eager, selected));
+    assert!(!icon_row_within_eager_window(eager + 7, selected));
+}
+
+#[test]
+fn prewarm_icon_targets_dedupes_skips_targetless_and_limits() {
+    use crate::icons::prewarm_icon_targets;
+    let application = |id: &str, target: Option<&str>| SearchResult {
+        id: String::from(id),
+        title: String::from(id),
+        subtitle: String::from("Application"),
+        kind: ResultKind::Application,
+        source: ResultSource::ApplicationCatalog,
+        target: target.map(String::from),
+    };
+    let results = vec![
+        application("a", Some(r"C:\Tools\demo.exe")),
+        application("b", Some(r"C:\Tools\demo.exe")), // 同目标，去重
+        application("c", None),                       // 无目标，跳过
+        application("d", Some(r"C:\Tools\other.exe")),
+        application("e", Some(r"C:\Tools\third.exe")),
+    ];
+    let targets = prewarm_icon_targets(&results, 2);
+    assert_eq!(
+        targets,
+        vec![
+            String::from(r"C:\Tools\demo.exe"),
+            String::from(r"C:\Tools\other.exe"),
+        ]
+    );
+    assert!(prewarm_icon_targets(&results, 16).len() == 3);
+    assert!(prewarm_icon_targets(&[], 8).is_empty());
 }
 
 #[test]

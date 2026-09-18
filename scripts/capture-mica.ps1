@@ -1551,20 +1551,27 @@ try {
         $powerShellIconTargets = @($powerShellIconLines | ForEach-Object {
             if ($_ -match "`ticon_target=([^`t]*)") { $Matches[1] }
         } | Where-Object { $_ -and $_.Length -gt 0 } | Sort-Object -Unique)
+        # 图标请求节流后，只有「立即提取窗口」（可见行 + 选区邻域，probe 行的 eager=True）
+        # 内的行才保证完成提取；窗口外的行保持字形回退，不作为烟雾测试断言对象。
+        $eagerPowerShellIconTargets = @($powerShellIconLines | Where-Object {
+            $_ -match "`teager=True"
+        } | ForEach-Object {
+            if ($_ -match "`ticon_target=([^`t]*)") { $Matches[1] }
+        } | Where-Object { $_ -and $_.Length -gt 0 } | Sort-Object -Unique)
         $loadedPowerShellTargets = @(Get-Content $iconProbePath -ErrorAction SilentlyContinue | ForEach-Object {
             if ($_ -match "(?i)^target=(.*)`tloaded=True$") { $Matches[1] }
         } | Where-Object { $_ -and $_.Length -gt 0 } | Sort-Object -Unique)
-        $loadedPowerShellIconTargets = @($powerShellIconTargets | Where-Object {
+        $loadedEagerPowerShellIconTargets = @($eagerPowerShellIconTargets | Where-Object {
             $loadedPowerShellTargets -contains $_
         })
-        $unloadedPowerShellIconTargets = @($powerShellIconTargets | Where-Object {
+        $unloadedEagerPowerShellIconTargets = @($eagerPowerShellIconTargets | Where-Object {
             $loadedPowerShellTargets -notcontains $_
         })
         $powerShellIconProbe =
-            $powerShellIconTargets.Count -gt 0 -and
-            $unloadedPowerShellIconTargets.Count -eq 0 -and
-            $loadedPowerShellIconTargets.Count -eq $powerShellIconTargets.Count
-        Write-Host "PowerShell probes: rows=$($powerShellRows.Count) icon_targets=$($powerShellIconTargets.Count) loaded_icon_targets=$($loadedPowerShellIconTargets.Count) unloaded_icon_targets=$($unloadedPowerShellIconTargets.Count)"
+            $eagerPowerShellIconTargets.Count -gt 0 -and
+            $unloadedEagerPowerShellIconTargets.Count -eq 0 -and
+            $loadedEagerPowerShellIconTargets.Count -eq $eagerPowerShellIconTargets.Count
+        Write-Host "PowerShell probes: icon_targets=$($powerShellIconTargets.Count) eager_targets=$($eagerPowerShellIconTargets.Count) loaded_eager=$($loadedEagerPowerShellIconTargets.Count) unloaded_eager=$($unloadedEagerPowerShellIconTargets.Count)"
         if (!$powerShellDedupeProbe) {
             throw "PowerShell dedupe smoke failed: rows=$($powerShellRows.Count)."
         }

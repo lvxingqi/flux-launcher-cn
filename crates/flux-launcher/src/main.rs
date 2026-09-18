@@ -46,7 +46,8 @@ use std::time::Duration;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 
 use crate::icons::{
-    icon_completion_generation_changed, tray_icon, SHELL_ICON_COMPLETION_GENERATION,
+    icon_completion_generation_changed, prewarm_icon_targets, request_shell_icon, tray_icon,
+    SHELL_ICON_COMPLETION_GENERATION,
 };
 use crate::launch::trace_launch_event;
 use actions::ActionItem;
@@ -111,6 +112,13 @@ const ACTION_BAR_HEIGHT: i32 = 22;
 const ACTION_WINDOW_HEIGHT: i32 = 250;
 // Six 46-DIP result rows plus local scroll padding keep the footer close to the results.
 const RESULT_VIEWPORT_HEIGHT: i32 = 288;
+// 结果行行高（DIP），与 result_row 中的行高保持一致，用于推导图标请求窗口。
+pub(crate) const RESULT_ROW_HEIGHT: i32 = 46;
+/// 图标请求「立即提取」的行数上限：可见行（RESULT_VIEWPORT_HEIGHT / RESULT_ROW_HEIGHT）
+/// 加两行余量。其余行在滚到选区附近时由响应式回调补发请求，避免一次结果集变化
+/// 把几十个 Everything 文件全部塞进唯一的图标提取线程。
+pub(crate) const EAGER_ICON_ROW_COUNT: usize =
+    (RESULT_VIEWPORT_HEIGHT / RESULT_ROW_HEIGHT + 2) as usize;
 const SETTINGS_WINDOW_HEIGHT: i32 = 520;
 const LAUNCHER_FONT_FAMILY: &str = "Segoe UI Variable";
 const SEARCH_INTERVAL: Duration = Duration::from_millis(40);
@@ -701,6 +709,8 @@ fn main() {
     let mut last_settings_visible = settings_visible.get();
     let mut last_everything_prompt_visible = everything_prompt_visible.get();
     let mut last_query = String::new();
+    // 空查询默认结果集只预热一次：启动后首个空闲 tick 完成，之后全部命中缓存。
+    let mut default_icon_prewarm_done = false;
     let mut visual_preview_process: Option<visual_preview::PreviewProcess> = None;
     let mut last_visual_preview_request: Option<(u16, u16)> = None;
     let mut last_visual_preview_locale = String::new();
@@ -2514,6 +2524,14 @@ fn main() {
                     update_sender_for_interval.clone(),
                     &update_check_in_flight_for_interval,
                 );
+            }
+            // 空查询默认结果集预热：启动后首个空闲 tick 把首屏默认目标的 shell 图标
+            // 排入后台提取，首次显示结果时即命中缓存，不再出现图标逐个弹入。
+            if !default_icon_prewarm_done {
+                default_icon_prewarm_done = true;
+                for target in prewarm_icon_targets(model.results(), EAGER_ICON_ROW_COUNT) {
+                    request_shell_icon(&target);
+                }
             }
             let completed_icon_generation =
                 SHELL_ICON_COMPLETION_GENERATION.load(Ordering::Acquire);
