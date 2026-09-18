@@ -103,9 +103,30 @@ pub enum HotkeyOp {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HotkeyCtx {
     pub(crate) op: Option<WindowOp>,
+    /// 派发瞬间的窗口可见性快照，由平台层在调用回调前填入。
+    ///
+    /// 回调自己查不了：它拿不到 hwnd，且执行期间平台层持有 `WindowState` 借用。
+    /// 可见性只是读取窗口样式位，不像 `ShowWindow` 那样同步重入消息处理，故平台层
+    /// 可以安全地预先快照——这样「已隐藏但仍持有系统前台的窗口」也能被回调正确
+    /// 判定为需要唤起，而不是按前台归属误判成「已经在前台」。
+    pub(crate) window_visible: bool,
 }
 
 impl HotkeyCtx {
+    /// 平台层用：构造已带上「派发瞬间窗口可见性」快照的上下文。
+    pub(crate) fn with_window_visible(window_visible: bool) -> Self {
+        Self {
+            op: None,
+            window_visible,
+        }
+    }
+    /// 派发瞬间窗口是否可见（平台层快照；平台未提供时默认为 `false`）。
+    ///
+    /// 用于替代「窗口是否已在前台」的判定：隐藏但持前台的窗口按前台判断会被
+    /// 误认为已显示，导致热键只发 hide、用户按下 Alt+Space 却看不到窗口。
+    pub fn window_visible(&self) -> bool {
+        self.window_visible
+    }
     /// 请求显示并前置窗口。
     pub fn show_window(&mut self) {
         self.op = Some(WindowOp::Show);

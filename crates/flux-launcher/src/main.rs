@@ -82,7 +82,7 @@ use update_state::{
     request_update_install, update_check_due,
 };
 use window_state::{
-    apply_launcher_size, dimension_from_slider, dimension_slider_fraction, launcher_is_foreground,
+    apply_launcher_size, dimension_from_slider, dimension_slider_fraction,
     launcher_window_geometry_with_prompt, launcher_window_geometry_with_sizes,
     monitor_preference_from_index, monitor_preference_index, parse_dimension_input,
     request_monitor_position, request_scroll, should_show_launcher, visual_preview_position,
@@ -872,7 +872,12 @@ fn main() {
                 height,
             );
             cursor_visibility_for_activation.show();
-            if should_show_launcher(launcher_is_foreground()) {
+            // 切换方向按窗口「实际可见性」判定，而不是按前台归属：launcher 自隐藏后
+            // （例如刚启动一个不前置窗口或瞬间退出的程序）系统可能仍把它视为前台
+            // 窗口，此时按前台判断会误判为「已显示」而只发 hide，用户再按 Alt+Space
+            // 就唤不起窗口。可见性快照由 windui 平台层在派发 WM_HOTKEY 时提供
+            // （`HotkeyCtx` 刻意不持有 hwnd，见 vendor/windui 的借用纪律）。
+            if should_show_launcher(ctx.window_visible()) {
                 ctx.show_window();
             } else {
                 ctx.hide_window();

@@ -19,6 +19,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOD_SHIFT, MOD_WIN, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_LEFT, VK_RETURN,
     VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
 };
+use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
 
 use crate::event::{Hotkey, HotkeyCtx, HotkeyOp, Key, WindowOp};
 use crate::platform::HotkeyBinding;
@@ -124,7 +125,11 @@ impl HotkeyState {
     #[must_use]
     pub(crate) fn dispatch(&mut self, id: usize) -> Option<WindowOp> {
         let slot = self.bindings.get_mut(id)?;
-        let mut ctx = HotkeyCtx::default();
+        // 回调不能自己查可见性（ctx 里刻意没有 hwnd）。这里在借用释放前快照一次：
+        // `IsWindowVisible` 只读窗口样式位，不会像 `ShowWindow` 那样同步派发
+        // WM_SHOWWINDOW 回 wnd_proc，因此不违反借用纪律。
+        let mut ctx =
+            HotkeyCtx::with_window_visible(unsafe { IsWindowVisible(self.hwnd).as_bool() });
         (slot.callback)(&mut ctx);
         ctx.take_op()
     }

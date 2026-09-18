@@ -516,7 +516,9 @@ fn display_title_uses_middle_ellipsis_for_long_names() {
 }
 
 #[test]
-fn activation_shows_when_flux_is_not_foreground() {
+fn activation_shows_while_window_is_hidden() {
+    // 决定切换方向的是窗口实际可见性，而不是前台归属：隐藏但仍持前台的 launcher
+    // 必须被唤起，否则用户按 Alt+Space 看不到任何反应。
     assert!(should_show_launcher(false));
     assert!(!should_show_launcher(true));
 }

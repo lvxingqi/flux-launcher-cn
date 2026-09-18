@@ -236,27 +236,12 @@ pub(crate) fn apply_launcher_size(
     }
 }
 
-#[cfg(windows)]
-pub(crate) fn launcher_is_foreground() -> bool {
-    use windows::Win32::System::Threading::GetCurrentProcessId;
-    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
-
-    unsafe {
-        let foreground = GetForegroundWindow();
-        if foreground.is_invalid() {
-            return false;
-        }
-        let mut process_id = 0_u32;
-        GetWindowThreadProcessId(foreground, Some(&mut process_id));
-        process_id == GetCurrentProcessId()
-    }
-}
-
-#[cfg(not(windows))]
-fn launcher_is_foreground() -> bool {
-    false
-}
-
-pub(crate) fn should_show_launcher(is_foreground: bool) -> bool {
-    !is_foreground
+/// 全局热键切换方向：窗口隐藏时唤起，窗口已可见时隐藏。
+///
+/// 参数是窗口的**实际可见性**，由 windui 平台层在派发 `WM_HOTKEY` 时快照提供。
+/// 不能用「窗口是否已在前台」代替：launcher 自隐藏后系统可能仍把它当作前台窗口
+/// （例如刚启动一个不前置窗口或瞬间退出的程序），按前台判断会误判为「已显示」
+/// 而只发 hide，用户再按 Alt+Space 便唤不起窗口。
+pub(crate) fn should_show_launcher(is_visible: bool) -> bool {
+    !is_visible
 }
