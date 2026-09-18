@@ -202,6 +202,12 @@ jobs:
           WINDUI_D2D: "1"
           FLUX_DISABLE_UPDATE_CHECKS: "1"
           FLUX_DISABLE_EVERYTHING_PROMPT: "1"
+          # 自由文本输入不能直接插值进 PowerShell 脚本：反引号、引号或 $ 会改变解析结果。
+          # 通过环境变量传递，输入内容对脚本解析不再有任何影响。
+          FLUX_SMOKE_NAVIGATION_QUERY: ${{ inputs.navigation_query }}
+          FLUX_SMOKE_NAVIGATION_CYCLES: ${{ inputs.navigation_cycles }}
+          FLUX_SMOKE_TAB_NAVIGATION_CYCLES: ${{ inputs.tab_navigation_cycles }}
+          FLUX_SMOKE_RESOURCE_PROFILE_CYCLES: ${{ inputs.resource_profile_cycles }}
         run: |
           $captureParams = @{
             Executable = "./target/x86_64-pc-windows-msvc/release/flux-launcher.exe"
@@ -219,16 +225,16 @@ jobs:
             $captureParams.ForceTranslucentFallback = $true
           }
 
-          if ("${{ inputs.navigation_query }}" -ne "") {
-            $captureParams.NavigationQuery = "${{ inputs.navigation_query }}"
+          if ("$env:FLUX_SMOKE_NAVIGATION_QUERY" -ne "") {
+            $captureParams.NavigationQuery = "$env:FLUX_SMOKE_NAVIGATION_QUERY"
           }
 
-          if ("${{ inputs.navigation_cycles }}" -ne "") {
-            $captureParams.NavigationCycles = [int]"${{ inputs.navigation_cycles }}"
+          if ("$env:FLUX_SMOKE_NAVIGATION_CYCLES" -ne "") {
+            $captureParams.NavigationCycles = [int]"$env:FLUX_SMOKE_NAVIGATION_CYCLES"
           }
 
-          if ("${{ inputs.tab_navigation_cycles }}" -ne "") {
-            $captureParams.TabNavigationCycles = [int]"${{ inputs.tab_navigation_cycles }}"
+          if ("$env:FLUX_SMOKE_TAB_NAVIGATION_CYCLES" -ne "") {
+            $captureParams.TabNavigationCycles = [int]"$env:FLUX_SMOKE_TAB_NAVIGATION_CYCLES"
           }
 
           if ("${{ inputs.pointer_interaction_smoke }}" -eq "true") {
@@ -281,7 +287,7 @@ jobs:
 
           if ("${{ inputs.resource_profile_smoke }}" -eq "true") {
             $captureParams.ResourceProfileSmoke = $true
-            $captureParams.ResourceProfileCycles = [int]"${{ inputs.resource_profile_cycles }}"
+            $captureParams.ResourceProfileCycles = [int]"$env:FLUX_SMOKE_RESOURCE_PROFILE_CYCLES"
           }
 
           if ("${{ inputs.monitor_preference_smoke }}" -eq "true") {

@@ -68,6 +68,10 @@ jobs:
         shell: pwsh
         run: ./scripts/validate-powershell-command-references.ps1 -ScriptsDirectory scripts
 
+      - name: 校验 workflow 输入插值
+        shell: pwsh
+        run: ./scripts/validate-workflow-input-interpolation.ps1 -WorkflowDirectory .github/workflows
+
       - name: 运行 Clippy
         shell: pwsh
         run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings

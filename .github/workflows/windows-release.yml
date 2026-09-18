@@ -59,6 +59,9 @@ jobs:
 
       - name: 读取并校验应用版本
         shell: pwsh
+        env:
+          # 自由文本输入通过环境变量传入，避免反引号、引号或 $ 改变 PowerShell 解析结果。
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           $cargoVersion = cargo metadata --no-deps --format-version 1 |
             ConvertFrom-Json |
@@ -70,7 +73,7 @@ jobs:
             throw "无法从 Cargo metadata 获取 flux-launcher 版本。"
           }
 
-          $releaseTag = "${{ inputs.release_tag }}"
+          $releaseTag = $env:RELEASE_TAG
 
           if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
             throw "Release 标签必须符合 vX.Y.Z 格式，实际为 '$releaseTag'。"
@@ -261,8 +264,12 @@ jobs:
       - name: 校验发布说明
         if: inputs.publish_release
         shell: pwsh
+        env:
+          # 发布说明是人工撰写的 Markdown，可能包含反引号、引号或 $；直接插值会破坏
+          # PowerShell 解析（曾导致 release 运行在校验步骤报 ParserError）。
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
-          if ([string]::IsNullOrWhiteSpace("${{ inputs.release_notes }}")) {
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_NOTES)) {
             throw "创建 GitHub Release 前必须填写人工校对的发布说明。"
           }
 
