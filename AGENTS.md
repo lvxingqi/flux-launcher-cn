@@ -207,6 +207,26 @@ cargo test -p flux-core
 
 涉及 `windui`、发布打包或安装器时，必须执行对应额外检查。
 
+### PowerShell 脚本验证
+
+凡改动 `scripts/*.ps1`、`PSScriptAnalyzerSettings.psd1` 或 workflow 内嵌 PowerShell 片段，
+提交前必须执行以下检查：
+
+```powershell
+Set-PSRepository PSGallery -InstallationPolicy Trusted
+Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 -Severity Warning,Error
+```
+
+零输出方为通过。同时必须全量解析 `scripts/*.ps1` 语法（PowerShell AST Parser），零错误。
+
+- 未改动任何 PowerShell 内容时不强制执行本节。
+- 改动 `PSScriptAnalyzerSettings.psd1` 本身时必须全量复扫，并逐条说明新增例外的理由。
+- 禁止为绕过告警新增 ExcludeRules 或内联抑制；确需排除必须在设置文件内以注释写明理由
+  （现有 `PSAvoidUsingWriteHost` 例外即此先例）。
+- 上述检查已在 `ci.yml` 的「验证 PowerShell 脚本」步骤中强制；脚本改动未经本地检查即推送
+  会导致 CI 失败。
+
 任何检查失败都必须先分析日志并判断原因；仅在确认属于环境或瞬时问题后才可重跑，不能因“看起来无关”而忽略失败。
 
 ---
