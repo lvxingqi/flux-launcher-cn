@@ -19,9 +19,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: winget-manifest-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: windows-latest
+    timeout-minutes: 20
 
     steps:
       - name: 检出代码
@@ -118,6 +123,8 @@ jobs:
 
       - name: 核验稳定版安装程序
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $latestRelease = gh release list `
             --repo "${{ github.repository }}" `
