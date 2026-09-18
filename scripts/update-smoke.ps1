@@ -123,7 +123,7 @@ function Get-UpdatedLauncherProcess {
 }
 
 New-Item -ItemType Directory -Force -Path $fixtureRoot, $appDataRoot | Out-Null
-Stop-ExistingFluxProcesses
+Stop-ExistingFluxProcess
 Copy-Item -LiteralPath $Installer -Destination $fixtureInstaller -Force
 $installerHash = (Get-FileHash -Algorithm SHA256 -Path $fixtureInstaller).Hash.ToLowerInvariant()
 $port = 18963

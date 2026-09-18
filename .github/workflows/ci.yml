@@ -64,6 +64,10 @@ jobs:
         shell: pwsh
         run: ./scripts/validate-workflow-secret-references.ps1 -WorkflowDirectory .github/workflows
 
+      - name: 校验脚本命令引用
+        shell: pwsh
+        run: ./scripts/validate-powershell-command-references.ps1 -ScriptsDirectory scripts
+
       - name: 运行 Clippy
         shell: pwsh
         run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
