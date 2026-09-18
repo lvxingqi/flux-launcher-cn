@@ -113,6 +113,8 @@ settings:
     obsidian_hint: 'Search notes and vault files with the configured keyword, for example: ob meeting. Use `ob create project` to create a new note.'
     google: Google Search
     google_desc: Enable Google web search
+    system_commands: System commands
+    system_commands_desc: Enable direct system commands such as shutdown, restart, lock and sleep
     google_hint: 'Search the web with the configured keyword, for example: g space exploration. The result opens in your default browser.'
   priorities:
     title: Explicit application priorities
@@ -170,6 +172,10 @@ builtin:
     file_subtitle: "Obsidian • %{vault} • %{path}"
     create_note: "Create note: %{name}"
     vault_subtitle: "Obsidian • %{vault}"
+  system:
+    title: "%{name} — press Enter to run now"
+    title_timeout: "%{name} in %{seconds}s — press Enter to run"
+    subtitle: "System command • Windows shell"
 action:
   open: Open
   copy_name: Copy name

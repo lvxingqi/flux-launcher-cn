@@ -238,6 +238,7 @@ pub(crate) struct EverythingSettingsContext {
     pub(crate) obsidian_alias: Signal<String>,
     pub(crate) google_enabled: Signal<bool>,
     pub(crate) google_alias: Signal<String>,
+    pub(crate) system_commands_enabled: Signal<bool>,
 }
 
 pub(crate) fn everything_settings(context: EverythingSettingsContext) -> Element {
@@ -251,6 +252,7 @@ pub(crate) fn everything_settings(context: EverythingSettingsContext) -> Element
         obsidian_alias,
         google_enabled,
         google_alias,
+        system_commands_enabled,
     } = context;
     let settings_for_toggle = Arc::clone(&settings);
     let auto_enable_for_toggle = auto_enable;
@@ -354,6 +356,7 @@ pub(crate) fn everything_settings(context: EverythingSettingsContext) -> Element
             obsidian_alias,
             google_enabled,
             google_alias,
+            system_commands_enabled,
         ))
 }
 
@@ -428,6 +431,7 @@ pub(crate) fn plugin_settings(
     obsidian_alias: Signal<String>,
     google_enabled: Signal<bool>,
     google_alias: Signal<String>,
+    system_commands_enabled: Signal<bool>,
 ) -> Element {
     Element::col()
         .width_match()
@@ -497,4 +501,11 @@ pub(crate) fn plugin_settings(
                 .max_lines(3)
                 .truncate(Truncate::End),
         )
+        .child(Element::field_signal(
+            i18n_hub.tr(|| t!("settings.plugins.system_commands").into_owned()),
+            Element::checkbox(
+                i18n_hub.tr(|| t!("settings.plugins.system_commands_desc").into_owned()),
+                system_commands_enabled,
+            ),
+        ))
 }

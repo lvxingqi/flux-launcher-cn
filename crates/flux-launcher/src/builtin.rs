@@ -28,12 +28,14 @@ pub struct BuiltinQuery {
     pub google_keyword: String,
     pub obsidian_enabled: bool,
     pub obsidian_keyword: String,
+    pub system_commands_enabled: bool,
 }
 
 #[derive(Clone, Debug)]
 pub enum BuiltinAction {
     OpenUrl(String),
     CopyText(String),
+    RunCommand { program: String, arguments: String },
 }
 
 #[derive(Clone, Debug)]
@@ -47,8 +49,12 @@ pub trait BuiltinProvider: Send + Sync {
 }
 
 pub fn query_builtin_providers(request: &BuiltinQuery) -> Vec<BuiltinResult> {
-    let providers: [&dyn BuiltinProvider; 3] =
-        [&CalculatorProvider, &GoogleProvider, &ObsidianProvider];
+    let providers: [&dyn BuiltinProvider; 4] = [
+        &CalculatorProvider,
+        &GoogleProvider,
+        &ObsidianProvider,
+        &SystemCommandProvider,
+    ];
     providers
         .into_iter()
         .flat_map(|provider| provider.query(request))
@@ -341,6 +347,142 @@ fn normalized_keyword<'a>(keyword: &'a str, fallback: &'a str) -> &'a str {
         fallback
     } else {
         keyword
+    }
+}
+
+/// 系统命令定义：借鉴 Wox 的直接执行命令。keywords 命中即出现结果；
+/// shutdown / restart 支持把关键词后的数字透传为超时秒数（`/t N`），缺省立即执行。
+struct SystemCommandSpec {
+    id: &'static str,
+    program: &'static str,
+    base_arguments: &'static str,
+    timeout_capable: bool,
+    keywords: &'static [&'static str],
+}
+
+const SYSTEM_COMMAND_SPECS: &[SystemCommandSpec] = &[
+    SystemCommandSpec {
+        id: "system-command:shutdown",
+        program: "shutdown.exe",
+        base_arguments: "/s",
+        timeout_capable: true,
+        keywords: &["shutdown", "power off", "关机"],
+    },
+    SystemCommandSpec {
+        id: "system-command:restart",
+        program: "shutdown.exe",
+        base_arguments: "/r",
+        timeout_capable: true,
+        keywords: &["restart", "reboot", "重启"],
+    },
+    SystemCommandSpec {
+        id: "system-command:sign-out",
+        program: "shutdown.exe",
+        base_arguments: "/l",
+        timeout_capable: false,
+        keywords: &["sign out", "log off", "注销"],
+    },
+    SystemCommandSpec {
+        id: "system-command:lock",
+        program: "rundll32.exe",
+        base_arguments: "user32.dll,LockWorkStation",
+        timeout_capable: false,
+        keywords: &["lock", "锁定"],
+    },
+    SystemCommandSpec {
+        id: "system-command:sleep",
+        program: "rundll32.exe",
+        base_arguments: "powrprof.dll,SetSuspendState 0,1,0",
+        timeout_capable: false,
+        keywords: &["sleep", "睡眠"],
+    },
+    SystemCommandSpec {
+        id: "system-command:hibernate",
+        program: "shutdown.exe",
+        base_arguments: "/h",
+        timeout_capable: false,
+        keywords: &["hibernate", "休眠"],
+    },
+];
+
+struct SystemCommandProvider;
+
+impl BuiltinProvider for SystemCommandProvider {
+    fn query(&self, request: &BuiltinQuery) -> Vec<BuiltinResult> {
+        if !request.system_commands_enabled {
+            return Vec::new();
+        }
+        let query = request.query.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let normalized = query.to_ascii_lowercase();
+        let (keyword, remainder) = match normalized.split_once(char::is_whitespace) {
+            Some((keyword, rest)) => (keyword, rest.trim()),
+            None => (normalized.as_str(), ""),
+        };
+        let Some(spec) = SYSTEM_COMMAND_SPECS
+            .iter()
+            .find(|spec| spec.keywords.contains(&keyword))
+        else {
+            return Vec::new();
+        };
+        // 参数透传：只有 shutdown / restart 接受纯数字超时秒数。
+        // 其余任何附加文本都不匹配，避免把用户未预期的输入变成立即执行的命令。
+        let timeout = if remainder.is_empty() {
+            None
+        } else if spec.timeout_capable {
+            match remainder.parse::<u32>() {
+                Ok(seconds) => Some(seconds),
+                Err(_) => return Vec::new(),
+            }
+        } else {
+            return Vec::new();
+        };
+        let arguments = match timeout {
+            Some(seconds) => format!("{} /t {}", spec.base_arguments, seconds),
+            None => spec.base_arguments.to_owned(),
+        };
+        let title = if let Some(seconds) = timeout {
+            t!(
+                "builtin.system.title_timeout",
+                name = command_display_name(spec.id),
+                seconds = seconds
+            )
+            .into_owned()
+        } else {
+            t!("builtin.system.title", name = command_display_name(spec.id)).into_owned()
+        };
+        vec![BuiltinResult {
+            result: SearchResult {
+                id: spec.id.to_owned(),
+                title,
+                subtitle: t!(
+                    "builtin.system.subtitle",
+                    name = command_display_name(spec.id)
+                )
+                .into_owned(),
+                kind: ResultKind::Command,
+                source: ResultSource::BuiltIn,
+                target: None,
+            },
+            action: Some(BuiltinAction::RunCommand {
+                program: spec.program.to_owned(),
+                arguments,
+            }),
+        }]
+    }
+}
+
+fn command_display_name(id: &str) -> &'static str {
+    match id {
+        "system-command:shutdown" => "shutdown",
+        "system-command:restart" => "restart",
+        "system-command:sign-out" => "sign out",
+        "system-command:lock" => "lock",
+        "system-command:sleep" => "sleep",
+        "system-command:hibernate" => "hibernate",
+        _ => "?",
     }
 }
 
@@ -669,8 +811,72 @@ fn path_to_slash_string(path: &Path) -> String {
 }
 
 #[cfg(test)]
+fn test_query(query: &str) -> BuiltinQuery {
+    BuiltinQuery {
+        query: query.to_owned(),
+        google_enabled: false,
+        google_keyword: String::from("g"),
+        obsidian_enabled: false,
+        obsidian_keyword: String::from("ob"),
+        system_commands_enabled: true,
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_command_provider_matches_shutdown_and_restart_keywords() {
+        let shutdown = SystemCommandProvider.query(&test_query("shutdown"));
+        assert_eq!(shutdown.len(), 1);
+        assert_eq!(shutdown[0].result.kind, ResultKind::Command);
+        assert!(matches!(
+            &shutdown[0].action,
+            Some(BuiltinAction::RunCommand { program, arguments })
+                if program == "shutdown.exe" && arguments == "/s"
+        ));
+
+        let restart = SystemCommandProvider.query(&test_query("reboot"));
+        assert!(matches!(
+            &restart[0].action,
+            Some(BuiltinAction::RunCommand { arguments, .. }) if arguments == "/r"
+        ));
+
+        assert!(SystemCommandProvider.query(&test_query("关机")).len() == 1);
+    }
+
+    #[test]
+    fn system_command_provider_passes_numeric_timeout_for_capable_commands() {
+        let delayed = SystemCommandProvider.query(&test_query("shutdown 60"));
+        assert!(matches!(
+            &delayed[0].action,
+            Some(BuiltinAction::RunCommand { arguments, .. }) if arguments == "/s /t 60"
+        ));
+
+        // 不支持超时的命令带任何附加参数都不匹配。
+        assert!(SystemCommandProvider
+            .query(&test_query("lock 60"))
+            .is_empty());
+
+        // 非数字剩余部分不匹配，防止误执行。
+        assert!(SystemCommandProvider
+            .query(&test_query("shutdown now"))
+            .is_empty());
+    }
+
+    #[test]
+    fn system_command_provider_respects_toggle_and_ignores_unknown_queries() {
+        let mut request = test_query("shutdown");
+        request.system_commands_enabled = false;
+        assert!(SystemCommandProvider.query(&request).is_empty());
+
+        assert!(SystemCommandProvider
+            .query(&test_query("shutdown now please"))
+            .is_empty());
+        assert!(SystemCommandProvider.query(&test_query("shutd")).is_empty());
+        assert!(SystemCommandProvider.query(&test_query("")).is_empty());
+    }
 
     #[test]
     fn calculator_provider_returns_flow_style_result_and_copy_action() {
@@ -680,6 +886,7 @@ mod tests {
             google_keyword: String::from("g"),
             obsidian_enabled: false,
             obsidian_keyword: String::from("ob"),
+            system_commands_enabled: false,
         };
         let results = CalculatorProvider.query(&request);
         assert_eq!(results.len(), 1);
@@ -706,6 +913,7 @@ mod tests {
             google_keyword: String::from("g"),
             obsidian_enabled: false,
             obsidian_keyword: String::from("ob"),
+            system_commands_enabled: false,
         });
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].result.title, "= 2018");
@@ -720,6 +928,7 @@ mod tests {
             google_keyword: String::from("g"),
             obsidian_enabled: false,
             obsidian_keyword: String::from("ob"),
+            system_commands_enabled: false,
         });
         assert_eq!(results[0].result.title, "= 0");
     }
@@ -736,6 +945,7 @@ mod tests {
                 google_keyword: String::from("g"),
                 obsidian_enabled: false,
                 obsidian_keyword: String::from("ob"),
+                system_commands_enabled: false,
             })
             .is_empty());
     }
@@ -748,6 +958,7 @@ mod tests {
             google_keyword: String::from("g"),
             obsidian_enabled: true,
             obsidian_keyword: String::from("ob"),
+            system_commands_enabled: false,
         };
         let results = GoogleProvider.query(&request);
         assert_eq!(results.len(), 1);

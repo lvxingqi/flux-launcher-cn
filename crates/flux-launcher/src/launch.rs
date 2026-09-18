@@ -85,6 +85,17 @@ pub fn open_url(url: &str) -> bool {
     shell_execute("open", url, None)
 }
 
+/// 在后台 shell 线程执行系统命令（如关机、锁定），供系统命令 provider 使用。
+#[cfg(windows)]
+pub fn run_command(program: &str, arguments: &str) -> bool {
+    shell_execute("open", program, Some(arguments))
+}
+
+#[cfg(not(windows))]
+pub fn run_command(_program: &str, _arguments: &str) -> bool {
+    false
+}
+
 #[cfg(windows)]
 pub fn open_recycle_bin() -> bool {
     shell_execute("open", "shell:RecycleBinFolder", None)

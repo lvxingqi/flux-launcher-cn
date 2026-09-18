@@ -38,6 +38,7 @@ pub enum PluginAction {
     OpenUrl(String),
     OpenPath(String),
     CopyText(String),
+    RunCommand { program: String, arguments: String },
 }
 
 #[derive(Clone, Debug)]
@@ -50,14 +51,22 @@ pub struct PluginQueryResponse {
     pub actions: HashMap<String, PluginAction>,
 }
 
+/// 内置 provider 的开关与关键词。集中成一个结构体传递，避免 provider 请求
+/// 参数随功能增加持续膨胀。
+#[derive(Clone, Debug)]
+pub struct BuiltinPluginFlags {
+    pub obsidian_enabled: bool,
+    pub obsidian_keyword: String,
+    pub google_enabled: bool,
+    pub google_keyword: String,
+    pub system_commands_enabled: bool,
+}
+
 #[derive(Clone, Debug)]
 struct PluginRequest {
     sequence: u64,
     query: String,
-    obsidian_enabled: bool,
-    obsidian_keyword: String,
-    google_enabled: bool,
-    google_keyword: String,
+    flags: BuiltinPluginFlags,
 }
 
 #[derive(Clone, Debug)]
@@ -118,23 +127,12 @@ impl FlowPluginWorker {
         Self { latest, wake }
     }
 
-    pub fn request(
-        &self,
-        sequence: u64,
-        query: String,
-        obsidian_enabled: bool,
-        obsidian_keyword: String,
-        google_enabled: bool,
-        google_keyword: String,
-    ) {
+    pub fn request(&self, sequence: u64, query: String, flags: BuiltinPluginFlags) {
         if let Ok(mut latest) = self.latest.lock() {
             *latest = Some(PluginRequest {
                 sequence,
                 query,
-                obsidian_enabled,
-                obsidian_keyword,
-                google_enabled,
-                google_keyword,
+                flags,
             });
             let _ = self.wake.try_send(());
         }
@@ -167,6 +165,9 @@ pub fn execute_async(action: PluginAction) {
             }
             PluginAction::CopyText(text) => {
                 windui::platform::Clipboard.set_text(&text);
+            }
+            PluginAction::RunCommand { program, arguments } => {
+                crate::launch::run_command(&program, &arguments);
             }
         })
         .expect("failed to create Flow plugin action thread");
@@ -248,10 +249,11 @@ fn append_builtin_results(
 ) {
     let builtin_request = BuiltinQuery {
         query: request.query.clone(),
-        google_enabled: request.google_enabled,
-        google_keyword: request.google_keyword.clone(),
-        obsidian_enabled: request.obsidian_enabled,
-        obsidian_keyword: request.obsidian_keyword.clone(),
+        google_enabled: request.flags.google_enabled,
+        google_keyword: request.flags.google_keyword.clone(),
+        obsidian_enabled: request.flags.obsidian_enabled,
+        obsidian_keyword: request.flags.obsidian_keyword.clone(),
+        system_commands_enabled: request.flags.system_commands_enabled,
     };
     for builtin in query_builtin_providers(&builtin_request) {
         if results.len() >= MAX_RESULTS {
@@ -262,6 +264,9 @@ fn append_builtin_results(
             let action = match action {
                 BuiltinAction::OpenUrl(url) => PluginAction::OpenUrl(url),
                 BuiltinAction::CopyText(text) => PluginAction::CopyText(text),
+                BuiltinAction::RunCommand { program, arguments } => {
+                    PluginAction::RunCommand { program, arguments }
+                }
             };
             actions.insert(id, action);
         }
@@ -768,10 +773,13 @@ mod tests {
         let request = PluginRequest {
             sequence: 1,
             query: String::from("1+1"),
-            obsidian_enabled: false,
-            obsidian_keyword: String::from("ob"),
-            google_enabled: false,
-            google_keyword: String::from("g"),
+            flags: BuiltinPluginFlags {
+                obsidian_enabled: false,
+                obsidian_keyword: String::from("ob"),
+                google_enabled: false,
+                google_keyword: String::from("g"),
+                system_commands_enabled: false,
+            },
         };
         let mut results = Vec::new();
         let mut actions = HashMap::new();

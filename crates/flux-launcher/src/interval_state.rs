@@ -22,6 +22,7 @@ pub(crate) fn dispatch_query(
     obsidian_alias: Signal<String>,
     google_enabled: Signal<bool>,
     google_alias: Signal<String>,
+    system_commands_enabled: Signal<bool>,
     current_results: Signal<Vec<SearchResult>>,
     provider_results: Rc<RefCell<ProviderResults>>,
     selected_id: Signal<String>,
@@ -93,10 +94,13 @@ pub(crate) fn dispatch_query(
         plugin_worker.request(
             current_sequence,
             query.to_owned(),
-            obsidian_enabled.get(),
-            obsidian_alias.get(),
-            google_enabled.get(),
-            google_alias.get(),
+            crate::plugins::BuiltinPluginFlags {
+                obsidian_enabled: obsidian_enabled.get(),
+                obsidian_keyword: obsidian_alias.get(),
+                google_enabled: google_enabled.get(),
+                google_keyword: google_alias.get(),
+                system_commands_enabled: system_commands_enabled.get(),
+            },
         );
         native_plugin_worker.request(current_sequence, query.to_owned());
     }

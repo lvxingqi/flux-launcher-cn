@@ -150,6 +150,8 @@ pub struct Settings {
     pub google_enabled: bool,
     #[serde(default = "default_google_alias")]
     pub google_alias: String,
+    #[serde(default = "enabled_by_default")]
+    pub system_commands_enabled: bool,
     #[serde(default)]
     pub monitor_preference: MonitorPreference,
     #[serde(default)]
@@ -186,6 +188,7 @@ impl Default for Settings {
             obsidian_alias: default_obsidian_alias(),
             google_enabled: true,
             google_alias: default_google_alias(),
+            system_commands_enabled: true,
             monitor_preference: MonitorPreference::default(),
             language: Language::default(),
             smooth_caret_duration_ms: DEFAULT_CARET_DURATION_MS,
@@ -432,6 +435,7 @@ mod tests {
             obsidian_alias: String::from("notes"),
             google_enabled: false,
             google_alias: String::from("search"),
+            system_commands_enabled: false,
             monitor_preference: MonitorPreference::Foreground,
             language: Language::SimplifiedChinese,
             smooth_caret_duration_ms: 120,

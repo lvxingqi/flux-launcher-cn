@@ -488,6 +488,7 @@ fn main() {
     let obsidian_alias = signal(settings.obsidian_alias.clone());
     let google_enabled = signal(settings.google_enabled);
     let google_alias = signal(settings.google_alias.clone());
+    let system_commands_enabled = signal(settings.system_commands_enabled);
     let initial_monitor_preference = std::env::var("FLUX_SMOKE_MONITOR_PREFERENCE")
         .ok()
         .and_then(|value| match value.to_ascii_lowercase().as_str() {
@@ -681,6 +682,7 @@ fn main() {
     let obsidian_alias_for_interval = obsidian_alias;
     let google_enabled_for_interval = google_enabled;
     let google_alias_for_interval = google_alias;
+    let system_commands_enabled_for_interval = system_commands_enabled;
     let history_mode_for_interval = history_mode;
     let language_preference_for_interval = language_preference;
     let settings_visible_for_interval = settings_visible;
@@ -1301,6 +1303,7 @@ fn main() {
     let obsidian_alias_for_apply = obsidian_alias;
     let google_enabled_for_apply = google_enabled;
     let google_alias_for_apply = google_alias;
+    let system_commands_enabled_for_apply = system_commands_enabled;
     let everything_status_for_apply = everything_status;
     let cancel_settings = {
         let settings = Arc::clone(&shared_settings);
@@ -1372,6 +1375,7 @@ fn main() {
             obsidian_alias.set(saved.obsidian_alias.clone());
             google_enabled.set(saved.google_enabled);
             google_alias.set(saved.google_alias.clone());
+            system_commands_enabled.set(saved.system_commands_enabled);
             monitor_preference.set(monitor_preference_index(saved.monitor_preference));
             everything_status.set(if saved.auto_enable_everything {
                 if everything_installed.get() {
@@ -1810,6 +1814,8 @@ fn main() {
                                         settings.obsidian_alias = obsidian_alias_for_apply.get();
                                         settings.google_enabled = google_enabled_for_apply.get();
                                         settings.google_alias = google_alias_for_apply.get();
+                                        settings.system_commands_enabled =
+                                            system_commands_enabled_for_apply.get();
                                         settings.monitor_preference =
                                             monitor_preference_from_index(monitor_preference.get());
                                         settings.language = language_preference_from_index(
@@ -1951,6 +1957,7 @@ fn main() {
                         obsidian_alias,
                         google_enabled,
                         google_alias,
+                        system_commands_enabled,
                     },
                 )),
         )
@@ -2543,6 +2550,7 @@ fn main() {
                 obsidian_alias_for_interval,
                 google_enabled_for_interval,
                 google_alias_for_interval,
+                system_commands_enabled_for_interval,
                 results_for_interval,
                 Rc::clone(&providers_for_interval),
                 selected_id,

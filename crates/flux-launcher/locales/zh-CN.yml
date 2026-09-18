@@ -113,6 +113,8 @@ settings:
     obsidian_hint: 使用配置的关键词搜索笔记与库文件，例如：ob meeting。使用 `ob create project` 创建新笔记。
     google: Google 搜索
     google_desc: 启用 Google 网页搜索
+    system_commands: 系统命令
+    system_commands_desc: 启用关机、重启、锁定、睡眠等直接系统命令
     google_hint: 使用配置的关键词搜索网页，例如：g space exploration。结果将在默认浏览器中打开。
   priorities:
     title: 显式应用程序优先级
@@ -170,6 +172,10 @@ builtin:
     file_subtitle: "Obsidian • %{vault} • %{path}"
     create_note: "创建笔记：%{name}"
     vault_subtitle: "Obsidian • %{vault}"
+  system:
+    title: "%{name} —— 按 Enter 立即执行"
+    title_timeout: "%{name} 将在 %{seconds} 秒后执行 —— 按 Enter 运行"
+    subtitle: "系统命令 • Windows shell"
 action:
   open: 打开
   copy_name: 复制名称

@@ -42,6 +42,7 @@ fn plugin_action_label(action: &PluginAction) -> &'static str {
         PluginAction::OpenUrl(_) => "Open web result",
         PluginAction::OpenPath(_) => "Open path",
         PluginAction::CopyText(_) => "Copy text",
+        PluginAction::RunCommand { .. } => "Run command",
     }
 }
 
