@@ -101,7 +101,7 @@ crates/flux-launcher/locales/zh-CN.yml
 ## 6. 行尾与格式化
 
 * Rust 使用仓库现有 `rustfmt.toml`，格式或行尾问题统一执行 `cargo fmt --all`，禁止手工修改 Rust 行尾。
-* 非 Rust 文件如发现 CRLF、行尾损坏或仅因行尾产生的 diff，停止自动编辑，人工规范为 LF，并通过字节级检查和 `git diff --check` 验证工作区与暂存区。
+* 非 Rust 文件如发现 CRLF、行尾损坏或仅因行尾产生的 diff，停止自动编辑，人工规范为 LF，并通过抽样十六进制检查与 `git diff --check` 验证工作区与暂存区。
 * 除非人工处理不可行，否则禁止使用脚本批量重写行尾。
 * 仅执行 `git add` 不视为完成修复。
 
@@ -116,13 +116,9 @@ crates/flux-launcher/locales/zh-CN.yml
 
 ### README.md 同步要求
 
-* 涉及用户可见功能、默认行为、快捷键、安装方式、发布流程、WinGet、构建命令、产品身份或项目链接的修改，必须检查并在需要时同步更新 `README.md`。
-
-* 仅内部重构、测试或 CI 实现细节变化，且不影响用户使用或项目维护方式时，无需修改 README。
-
+* 涉及用户可见功能、默认行为、快捷键、安装方式、发布流程、WinGet、构建命令、产品身份或项目链接的改动，必须检查并在需要时同步更新 `README.md`；仅内部重构、测试或 CI 实现细节变化，且不影响用户使用或项目维护方式时无需修改。
 * 更新时保持现有结构，避免无关改写，并确保产品名称、链接、命令和发布说明与当前实现一致。
-
-* README.en.md为README.md的英文版本，每当README.md文件内容发生变化，都需要进行同步。
+* `README.en.md` 为 `README.md` 的英文版本，`README.md` 内容变化时必须同步。
 
 
 ---
@@ -195,15 +191,20 @@ crates/flux-launcher/locales/zh-CN.yml
 
 提交或报告任务完成前执行适用检查：
 
-```bash
-source "$HOME/.cargo/env"
+按改动范围选择适用检查：Rust 改动执行下列全部；仅文档改动执行 `git diff --check`；仅 PowerShell 改动另见下方「PowerShell 脚本验证」。
+
+```powershell
 cargo fmt --all
 cargo fmt --all -- --check
 git diff --check
-cargo check --workspace --target x86_64-pc-windows-gnu
-cargo clippy -p flux-core -p flux-launcher --all-targets --target x86_64-pc-windows-gnu -- -D warnings
-cargo test -p flux-core
+cargo check --workspace --target x86_64-pc-windows-msvc
+cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+cargo test --workspace --target x86_64-pc-windows-msvc
 ```
+
+目标与 CI（`ci.yml`）保持一致，均为 `x86_64-pc-windows-msvc`。本机若已安装 MinGW 工具链，
+可额外执行 GNU 目标检查，但 CI 不强制。`cargo check` 等命令需要 Cargo 环境时，先按本机
+方式加载（Windows 上通常已由 rustup 配置，无需 `source` 脚本）。
 
 涉及 `windui`、发布打包或安装器时，必须执行对应额外检查。
 
@@ -265,10 +266,10 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 18.版本与 Release 规范
+## 18. 版本与 Release 规范
 
 * 项目版本遵循 **Semantic Versioning 2.0.0（SemVer）**。
-* GitHub Release 使用 v 前缀的版本 tag，例如 v0.1.0（即将发布的初始版本）
+* GitHub Release 使用 v 前缀的版本 tag，例如 `v0.1.0`。
 
 ---
 
@@ -310,7 +311,7 @@ gh workflow run windows-release.yml \
 
 ---
 
-## 22.Plan / Act 协作
+## 22. Plan / Act 协作
 
 ### Plan 模式
 - 必须把规划结果写入 `doc/plan/<任务名>.md`，包含：任务目标、编号步骤清单、每步验收标准。
@@ -318,6 +319,7 @@ gh workflow run windows-release.yml \
 
 ### Act 模式
 - 开始前必须先查找 `doc/plan/` 下与当前任务对应的最近一份计划文档并阅读，严格按其中步骤执行。
+- 存在多份相关计划文档时，以最近一份且尚未完成的为准；状态只回写正在执行的那份。
 - 不得擅自扩大范围或跳过步骤。
 - 若遇到计划未覆盖的新问题、方案不成立、依赖缺失等阻塞，必须立即停止，禁止猜测或绕过。
 - 停止后，在计划文档对应步骤下追加「执行阻塞」小节，写清：现象、报错、已尝试方法、阻塞点。
