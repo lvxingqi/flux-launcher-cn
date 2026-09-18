@@ -125,9 +125,10 @@ crates/flux-launcher/locales/zh-CN.yml
 
 ### README.md 同步要求
 
+* `README.md`（中文）为权威版本，内容、命令、链接与发布说明以它为准；`README.en.md` 是其英文版本，必须与 `README.md` 保持同步。
 * 涉及用户可见功能、默认行为、快捷键、安装方式、发布流程、WinGet、构建命令、产品身份或项目链接的改动，必须检查并在需要时同步更新 `README.md`；仅内部重构、测试或 CI 实现细节变化，且不影响用户使用或项目维护方式时无需修改。
-* 更新时保持现有结构，避免无关改写，并确保产品名称、链接、命令和发布说明与当前实现一致。
-* `README.en.md` 为 `README.md` 的英文版本，`README.md` 内容变化时必须同步。
+* 更新时保持现有结构，避免无关改写，并确保产品名称、链接、命令和发布说明与当前实现一致，不得引用已删除或改名的 workflow、脚本或产物。
+* 未改动 `README.md` 语义时，不对 `README.en.md` 做无关编辑。
 
 
 ---
@@ -376,6 +377,8 @@ gh workflow run windows-release.yml \
 * 嵌入 workflow 的 PowerShell 片段受第 15 节 PowerShell 检查约束。
 * 新增 workflow 输入须同步默认值、调用方与文档；不得留下只在 CI 中可用而无法本地复现的开关。
 * CI 目标平台即为本地检查目标平台，二者必须一致，不得要求本地执行 CI 无法执行的检查。
+* workflow 引用的 secrets / vars 名称必须维持在允许清单内，并由 `scripts/validate-workflow-secret-references.ps1` 在 CI 校验；新增、改名或删除密钥时必须同步该脚本的清单与第 20 节。
+* 编辑器提示 “Context access might be invalid: NAME” 属预期：本仓库按需配置密钥，workflow 在运行时自行守卫（无提交凭据时 fail-fast、签名仅限稳定通道），因此不得为了消除提示而创建空密钥或伪造变量。
 
 ---
 

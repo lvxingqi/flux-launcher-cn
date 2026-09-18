@@ -161,11 +161,21 @@ The Windows CI workflow additionally runs formatting, Clippy with warnings denie
 
 ## Release channels
 
-Automatic Windows release jobs publish **beta/prerelease builds by default**. Beta builds are intended for testing and are ignored by Flux's stable updater. For a SmartScreen-aware stable release, the maintainer should run the `Windows UI release` workflow with `release_channel=stable` after configuring the signing secrets; that path signs the binaries, builds the installer, and generates the WinGet manifest bundle. The legacy `Promote stable release` workflow only changes GitHub release metadata and must not be used for an unsigned build intended for WinGet. The stable updater consumes only published GitHub releases with `prerelease: false` and `draft: false`, then verifies the installer asset before launching it.
+Windows releases run through the manual `Windows 发布` (Windows Release) workflow, and the `release_channel` input selects the channel.
+
+Beta releases are intended for testing: they use `release_channel=beta` and the GitHub Release is marked as prerelease. Flux Launcher CN's stable updater never consumes beta/prerelease builds, and beta versions are never submitted to WinGet.
+
+Stable releases use `release_channel=stable` and are created only when a stable release is explicitly requested. A stable release must correspond to a non-draft, non-prerelease GitHub Release, and its installer and checksum information can then be used for the WinGet submission.
+
+Windows releases are never created automatically by pushes, schedules, or internal commits; both beta and stable releases are dispatched manually by the maintainer, and `publish_release` stays off unless the maintainer enables it for that run.
+
+Stable and beta share the same Windows release entry point, and a release should only be published after the Windows build, tests, installer, and portable package verification have passed. The stable updater consumes only published GitHub releases with `prerelease: false` and `draft: false`, then verifies the installer asset before launching it.
 
 ## WinGet and SmartScreen
 
-Flux includes a schema 1.12 multi-file WinGet manifest seed under [`packaging/winget/manifests`](packaging/winget/manifests) and a generator at [`scripts/generate-winget-manifest.ps1`](scripts/generate-winget-manifest.ps1). The Community Repository requires a separate pull request to [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs); adding files to this repository prepares the submission but does not publish Flux to WinGet automatically. The manifest targets a stable, version-specific GitHub release asset rather than a beta or mutable `latest` URL.
+Flux Launcher CN uses the WinGet PackageIdentifier `lvxingqi.FluxLauncherCN`.
+
+The project maintains a schema 1.12 multi-file WinGet manifest seed under [`packaging/winget/manifests`](packaging/winget/manifests), and [`scripts/generate-winget-manifest.ps1`](scripts/generate-winget-manifest.ps1) derives the version, download URL, SHA256, and display version fields from the stable release information.
 
 The release workflow signs stable Windows artifacts only when the encrypted `WINDOWS_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` secrets are configured. Beta builds remain usable without signing because they are testing artifacts. Authenticode signing provides a verified publisher identity and helps reputation accumulate across releases, but Microsoft SmartScreen can still show an initial warning for a new file until its hash or publisher reputation has sufficient clean download history. See [`packaging/winget/README.md`](packaging/winget/README.md) for the validation and release-signing procedure.
 
