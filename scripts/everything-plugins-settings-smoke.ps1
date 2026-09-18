@@ -87,15 +87,24 @@ function Save-DesktopScreenshot([string]$Path) {
     }
 }
 
-function Stop-SmokeProcess([System.Diagnostics.Process]$Process) {
-    if ($null -ne $Process) {
-        try {
-            if (!$Process.HasExited) {
-                Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
-                $Process.WaitForExit(5000)
-            }
-        } catch {
+function Stop-SmokeProcess {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param(
+        [System.Diagnostics.Process]$Process
+    )
+    if ($null -eq $Process) {
+        return
+    }
+    if (!$PSCmdlet.ShouldProcess($Process.Id, "Stop smoke process")) {
+        return
+    }
+    try {
+        if (!$Process.HasExited) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+            $Process.WaitForExit(5000)
         }
+    } catch {
+        Write-Verbose "Ignoring smoke process cleanup failure: $($_.Exception.Message)"
     }
 }
 
@@ -242,8 +251,8 @@ $executablePath = (Resolve-Path $Executable).Path
 $missing = $null
 $installed = $null
 try {
-    $missing = Invoke-PluginStateSmoke "missing" $false $OutputDirectory $executablePath
-    $installed = Invoke-PluginStateSmoke "installed" $true $OutputDirectory $executablePath
+    $missing = Invoke-PluginStateSmoke -Name "missing" -InstalledFixture $false -Root $OutputDirectory -ExecutablePath $executablePath
+    $installed = Invoke-PluginStateSmoke -Name "installed" -InstalledFixture $true -Root $OutputDirectory -ExecutablePath $executablePath
     [ordered]@{
         Missing = $missing
         Installed = $installed

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Executable,
     [Parameter(Mandatory = $true)]
@@ -66,21 +66,19 @@ function Wait-Until {
     throw "Timed out waiting for $Description"
 }
 
-function Get-TraceLines {
+function Get-TraceLine {
     if (-not (Test-Path $tracePath)) {
         return @()
     }
     return @(Get-Content -Path $tracePath)
 }
 
-function Get-ReleaseTags {
-    $normalized = $CurrentVersion.Trim().TrimStart('v')
-    $parsed = [version]::Parse($normalized)
-    $latest = "{0}.{1}.{2}" -f $parsed.Major, $parsed.Minor, ($parsed.Build + 1)
-    return @("v$latest", "v$normalized")
-}
-
-function Stop-ExistingFluxProcesses {
+function Stop-ExistingFluxProcess {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param()
+    if (!$PSCmdlet.ShouldProcess("flux-launcher", "Stop pre-existing launcher processes")) {
+        return
+    }
     $existing = @(Get-Process -Name "flux-launcher" -ErrorAction SilentlyContinue)
     foreach ($process in $existing) {
         if (!$process.HasExited) {
@@ -112,7 +110,7 @@ function Assert-LauncherResponsive {
     }
 }
 
-function Get-UpdatedLauncherProcesses {
+function Get-UpdatedLauncherProcess {
     $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $installRoot "flux-launcher.exe"))
     return @(Get-Process -Name "flux-launcher" -ErrorAction SilentlyContinue | Where-Object {
         try {
@@ -136,9 +134,12 @@ $prefix = "http://127.0.0.1:$port/"
 if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
     throw "Update smoke fixture port $port is already in use; stop the stale fixture server and retry."
 }
-$releaseTags = Get-ReleaseTags
-$syntheticLatestTag = $releaseTags[0]
-$currentStableTag = $releaseTags[1]
+# $CurrentVersion 只在脚本顶层使用，PSSA 的 PSReviewUnusedParameter 也仅在
+# 顶层统计引用，因此这里直接推导合成 release tag，不再包一层函数。
+$normalizedCurrentVersion = $CurrentVersion.Trim().TrimStart('v')
+$parsedCurrentVersion = [version]::Parse($normalizedCurrentVersion)
+$syntheticLatestTag = "v{0}.{1}.{2}" -f $parsedCurrentVersion.Major, $parsedCurrentVersion.Minor, ($parsedCurrentVersion.Build + 1)
+$currentStableTag = "v$normalizedCurrentVersion"
 
 Write-JsonFile -Path $firstReleasePath -Value @{
     tag_name = $syntheticLatestTag
@@ -218,12 +219,12 @@ try {
 
     Wait-Until -Description "the first update progress event" -Condition {
         Assert-LauncherResponsive -Process $launcher
-        (Get-TraceLines | Where-Object { $_ -like "update-progress*" }).Count -ge 2
+        (Get-TraceLine | Where-Object { $_ -like "update-progress*" }).Count -ge 2
     }
     Assert-LauncherResponsive -Process $launcher
 
     Wait-Until -Description "the installer handoff" -Condition {
-        (Get-TraceLines | Where-Object { $_ -like "update-installer-started*" }).Count -ge 1
+        (Get-TraceLine | Where-Object { $_ -like "update-installer-started*" }).Count -ge 1
     }
     # 安装器交接后旧进程退出与重启的等待放宽到 300s：开发机上未签名安装器的
     # Defender 实时扫描冷启动可能超过默认的 120s（CI runner 不受影响）。
@@ -235,7 +236,7 @@ try {
         Test-Path (Join-Path $installRoot "flux-launcher.exe")
     }
     Wait-Until -Description "the updated launcher restart hidden in the tray" -TimeoutSeconds 300 -Condition {
-        $updated = @(Get-UpdatedLauncherProcesses)
+        $updated = @(Get-UpdatedLauncherProcess)
         if ($updated.Count -lt 1) {
             return $false
         }
@@ -243,7 +244,7 @@ try {
         $updated[0].MainWindowHandle -eq [IntPtr]::Zero
     }
 
-    $updatedProcesses = @(Get-UpdatedLauncherProcesses)
+    $updatedProcesses = @(Get-UpdatedLauncherProcess)
     if ($updatedProcesses.Count -ne 1) {
         throw "Expected exactly one updated Flux process, found $($updatedProcesses.Count)"
     }
@@ -252,11 +253,11 @@ try {
         throw "Automatic update relaunched a visible Search window instead of staying hidden in the tray"
     }
 
-    $traceLines = Get-TraceLines
+    $traceLines = Get-TraceLine
     if ($traceLines | Where-Object { $_ -like "update-failed*" }) {
         throw "Update trace contains a failure: $($traceLines -join ' | ')"
     }
-    $progressLines = Get-TraceLines | Where-Object { $_ -like "update-progress*" }
+    $progressLines = Get-TraceLine | Where-Object { $_ -like "update-progress*" }
     $parsedProgress = @(
         $progressLines | ForEach-Object {
             $parts = $_ -split "`t"
@@ -287,7 +288,7 @@ try {
 }
 catch {
     Write-Host "Update smoke trace before failure:"
-    Get-TraceLines | ForEach-Object { Write-Host $_ }
+    Get-TraceLine | ForEach-Object { Write-Host $_ }
     throw
 }
 finally {

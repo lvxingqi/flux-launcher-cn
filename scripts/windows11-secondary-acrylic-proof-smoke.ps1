@@ -42,7 +42,7 @@ function Send-WmKey([IntPtr]$handle, [uint32]$virtualKey) {
 
 function Send-AsciiText([string]$text) {
     foreach ($character in $text.ToUpperInvariant().ToCharArray()) {
-        Send-VirtualKey ([byte][char]$character)
+        Send-VirtualKey -VirtualKey ([byte][char]$character)
     }
 }
 
@@ -78,10 +78,10 @@ $fixture.ShowInTaskbar = $false
 $fixture.TopMost = $false
 $fixture.BackColor = [System.Drawing.Color]::FromArgb(8, 12, 24)
 $fixture.Add_Paint({
-    param($sender, $eventArgs)
-    $g = $eventArgs.Graphics
-    $w = $sender.ClientSize.Width
-    $h = $sender.ClientSize.Height
+    param($paintWindow, $paintEventArgs)
+    $g = $paintEventArgs.Graphics
+    $w = $paintWindow.ClientSize.Width
+    $h = $paintWindow.ClientSize.Height
     $brushes = @(
         [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(20, 92, 170)),
         [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(88, 42, 142)),
@@ -124,10 +124,10 @@ try {
     Send-AsciiText $Query
     Start-Sleep -Seconds 2
     Save-Screen 'windows11-acrylic-proof-before-down.png' $screen
-    Send-VirtualKey 0x28 0x50 $true
+    Send-VirtualKey -VirtualKey 0x28 -ScanCode 0x50 -Extended $true
     Start-Sleep -Milliseconds 350
     Save-Screen 'windows11-acrylic-proof-after-down.png' $screen
-    Send-VirtualKey 0x27
+    Send-VirtualKey -VirtualKey 0x27
     Start-Sleep -Milliseconds 350
     Save-Screen 'windows11-acrylic-proof-action-mode.png' $screen
     [ordered]@{

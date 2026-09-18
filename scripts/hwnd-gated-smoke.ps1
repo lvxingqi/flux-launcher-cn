@@ -39,7 +39,14 @@ public static class HwndGatedSmoke {
 }
 "@
 
-function Focus-Window([IntPtr]$handle) {
+function Set-WindowFocus {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param(
+        [IntPtr]$handle
+    )
+    if (!$PSCmdlet.ShouldProcess($handle, "Set window focus")) {
+        throw "Set-WindowFocus was suppressed by -WhatIf; the smoke cannot continue."
+    }
     [uint32]$targetPid = 0
     $targetThread = [HwndGatedSmoke]::GetWindowThreadProcessId($handle, [ref]$targetPid)
     $currentThread = [HwndGatedSmoke]::GetCurrentThreadId()
@@ -131,7 +138,7 @@ try {
     $swpNoZOrderNoActivate = 0x0014
     [HwndGatedSmoke]::SetWindowPos($handle, [IntPtr]::Zero, $x, $y, 420, 250, $swpNoZOrderNoActivate) | Out-Null
     [HwndGatedSmoke]::ShowWindow($handle, 5) | Out-Null
-    Focus-Window $handle
+    Set-WindowFocus $handle
     Start-Sleep -Milliseconds 250
 
     [HwndGatedSmoke+RECT]$rect = [HwndGatedSmoke+RECT]::new()

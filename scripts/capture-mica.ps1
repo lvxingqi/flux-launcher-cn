@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Executable,
 
@@ -286,7 +286,7 @@ function Get-MemorySnapshot([System.Diagnostics.Process]$Process, [string]$Conte
     }
 }
 
-function Get-CpuTimeMilliseconds([System.Diagnostics.Process]$Process, [string]$Context = "CPU snapshot") {
+function Get-CpuTimeMillisecond([System.Diagnostics.Process]$Process, [string]$Context = "CPU snapshot") {
     Assert-ProcessAlive $Process $Context
     try {
         return $Process.TotalProcessorTime.TotalMilliseconds
@@ -630,7 +630,7 @@ try {
     # only after typing.
     $launcherHandle = Get-LauncherWindowHandle $process
     if ($launcherHandle -eq [IntPtr]::Zero) { throw "Flux launcher has no main window handle after waiting for startup." }
-    $keyboardLayoutProbe = Initialize-FluxKeyboardLayout $launcherHandle
+    Initialize-FluxKeyboardLayout $launcherHandle | Out-Null
     if (![FluxWallpaper]::IsWindowVisible($launcherHandle)) {
         # With hide-on-deactivate enabled, the runner can take focus before the
         # first sample. Restore the window through the real global activation bind.
@@ -659,9 +659,9 @@ try {
         }
         # Let queued hide work and startup activity settle before sampling.
         Start-Sleep -Milliseconds 1500
-        $idleCpuBefore = Get-CpuTimeMilliseconds $process
+        $idleCpuBefore = Get-CpuTimeMillisecond $process
         Start-Sleep -Seconds 3
-        $idleCpuAfter = Get-CpuTimeMilliseconds $process
+        $idleCpuAfter = Get-CpuTimeMillisecond $process
         $idleCpuDelta = [Math]::Round($idleCpuAfter - $idleCpuBefore, 2)
         Write-Host "Hidden idle CPU time over 3s: $idleCpuDelta ms"
         # 150 ms over 3 seconds is a 5% single-process CPU ceiling. This catches
@@ -1062,11 +1062,6 @@ try {
             # Reproduce the user's second half exactly: click an empty area of the
             # other top-level window while Settings is open, then choose Settings
             # from the tray a second time and require another full panel.
-            $secondDeactivationTraceBeforeCount = if (Test-Path $launchTracePath) {
-                @(Get-Content $launchTracePath).Count
-            } else {
-                0
-            }
             $secondOutsidePoint = $null
             foreach ($candidate in $candidatePoints) {
                 $insideSettings = $candidate.X -ge $settingsAfterDeactivationRect.Left -and
@@ -1210,10 +1205,10 @@ try {
         }
         if ($IdlePerformanceSmoke) {
             Start-Sleep -Milliseconds 1200
-            $deactivationCpuBefore = Get-CpuTimeMilliseconds $process
+            $deactivationCpuBefore = Get-CpuTimeMillisecond $process
             Start-Sleep -Seconds 3
             $deactivationIdleMemory = Get-MemorySnapshot $process
-            $deactivationCpuAfter = Get-CpuTimeMilliseconds $process
+            $deactivationCpuAfter = Get-CpuTimeMillisecond $process
             $deactivationCpuDelta = [Math]::Round($deactivationCpuAfter - $deactivationCpuBefore, 2)
             Write-Host "Click-hidden idle CPU time over 3s: $deactivationCpuDelta ms"
             if ($deactivationCpuDelta -gt 150) {
@@ -1303,7 +1298,7 @@ try {
         $profileQueries = @("wab", "ext:zip", ".png", "lmstudio", "ob ornith")
         $profileCycles = [Math]::Max(1, $ResourceProfileCycles)
         $profileStart = Get-MemorySnapshot $process
-        $profileCpuStart = Get-CpuTimeMilliseconds $process
+        $profileCpuStart = Get-CpuTimeMillisecond $process
         $profilePeakPrivate = [int64]$profileStart.PrivateBytes
         $profilePeakWorkingSet = [int64]$profileStart.WorkingSetBytes
         $profilePeakHandles = [int64]$profileStart.HandleCount
@@ -1337,7 +1332,7 @@ try {
         $profileEnd = Get-MemorySnapshot $process
         Start-Sleep -Seconds 3
         $profileQuietEnd = Get-MemorySnapshot $process
-        $profileCpuEnd = Get-CpuTimeMilliseconds $process
+        $profileCpuEnd = Get-CpuTimeMillisecond $process
         $profilePrivateGrowth = [int64]$profileEnd.PrivateBytes - [int64]$profileStart.PrivateBytes
         $profileWorkingSetGrowth = [int64]$profileEnd.WorkingSetBytes - [int64]$profileStart.WorkingSetBytes
         $profileHandleGrowth = [int64]$profileEnd.HandleCount - [int64]$profileStart.HandleCount
@@ -1461,7 +1456,7 @@ try {
             } | Where-Object { $_ -and $_.Length -gt 0 })
             $duplicates = @($identities | Group-Object | Where-Object Count -gt 1)
             $queryPassed =
-                $expectedQueryCount -ne $null -and
+                $null -ne $expectedQueryCount -and
                 $identityRows.Count -gt 0 -and
                 $identities.Count -eq $identityRows.Count -and
                 $duplicates.Count -eq 0
@@ -1930,12 +1925,12 @@ try {
         $emptyScreenshot = Join-Path $OutputDirectory "mica-repeat-show-empty.png"
         $reopenScreenshot = Join-Path $OutputDirectory "query-clear-reopen.png"
         $queryClearOnReopenProbe = Compare-ScreenshotRegion `
-            $emptyScreenshot `
-            $reopenScreenshot `
-            ($reopenRect.Left - [System.Windows.Forms.SystemInformation]::VirtualScreen.Left) `
-            ($reopenRect.Top - [System.Windows.Forms.SystemInformation]::VirtualScreen.Top) `
-            ($reopenRect.Right - $reopenRect.Left) `
-            56
+            -FirstPath $emptyScreenshot `
+            -SecondPath $reopenScreenshot `
+            -X ($reopenRect.Left - [System.Windows.Forms.SystemInformation]::VirtualScreen.Left) `
+            -Y ($reopenRect.Top - [System.Windows.Forms.SystemInformation]::VirtualScreen.Top) `
+            -Width ($reopenRect.Right - $reopenRect.Left) `
+            -Height 56
         if (!$queryClearOnReopenProbe) {
             throw "Query-clear smoke detected stale content in the reopened search bar."
         }
@@ -2642,7 +2637,6 @@ try {
             $directSliderY = $settingsRect.Top + [int][Math]::Round(360 * $settingsScale)
             $directPointClass = [FluxWallpaper]::WindowClassAtPoint($directSliderLeft, $directSliderY)
             Write-Host "Visual slider direct probe: left=$directSliderLeft right=$directSliderRight y=$directSliderY windowClass=$directPointClass"
-            $directStateBefore = if (Test-Path $settingsStderrPath) { Get-Content $settingsStderrPath -Raw } else { "" }
             [FluxWallpaper]::SetCursorPos($directSliderLeft, $directSliderY) | Out-Null
             [FluxWallpaper]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
             for ($step = 0; $step -le 10; $step++) {
@@ -2927,11 +2921,11 @@ try {
             $reopenGeometryMatch = $null
             for ($attempt = 0; $attempt -lt 30 -and $null -eq $reopenGeometryMatch; $attempt++) {
                 $reopenLog = Get-Content $reopenStderrPath -Raw
-                $matches = [regex]::Matches(
+                $reopenGeometryMatches = [regex]::Matches(
                     $reopenLog,
                     "VisualPreviewChild: GEOMETRY $reopenedPreviewProcessId (\d+) (\d+) (\d+) (\d+) (\d+)"
                 )
-                if ($matches.Count -gt 0) { $reopenGeometryMatch = $matches[$matches.Count - 1] }
+                if ($reopenGeometryMatches.Count -gt 0) { $reopenGeometryMatch = $reopenGeometryMatches[$reopenGeometryMatches.Count - 1] }
                 else { Start-Sleep -Milliseconds 100 }
             }
             if ($null -eq $reopenGeometryMatch -or

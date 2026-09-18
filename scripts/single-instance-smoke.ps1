@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Get-FluxProcesses {
+function Get-FluxProcess {
     $name = [System.IO.Path]::GetFileNameWithoutExtension($Executable)
     $processes = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
     @(
@@ -24,18 +24,19 @@ function Get-FluxProcesses {
                 }
             } catch {
                 # Ignore a process that exits while the snapshot is collected.
+                Write-Verbose "Ignoring a process that exited during the snapshot: $($_.Exception.Message)"
             }
         }
     )
 }
 
-function Get-EverythingProcesses {
+function Get-EverythingProcess {
     @(Get-Process -Name "Everything" -ErrorAction SilentlyContinue)
 }
 
 function Get-FluxProcessesStartedAtOrAfter([DateTime]$StartTime) {
     @(
-        foreach ($process in (Get-FluxProcesses)) {
+        foreach ($process in (Get-FluxProcess)) {
             try {
                 $process.Refresh()
                 if ($process.StartTime -ge $StartTime) {
@@ -43,12 +44,20 @@ function Get-FluxProcessesStartedAtOrAfter([DateTime]$StartTime) {
                 }
             } catch {
                 # Ignore a process that exits while the snapshot is collected.
+                Write-Verbose "Ignoring a process that exited during the snapshot: $($_.Exception.Message)"
             }
         }
     )
 }
 
-function Stop-Processes([System.Diagnostics.Process[]]$Processes) {
+function Stop-SmokeProcess {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param(
+        [System.Diagnostics.Process[]]$Processes
+    )
+    if (!$PSCmdlet.ShouldProcess("Flux processes", "Stop flux processes")) {
+        return
+    }
     foreach ($process in $Processes) {
         if ($null -ne $process -and !$process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -56,11 +65,11 @@ function Stop-Processes([System.Diagnostics.Process[]]$Processes) {
     }
 }
 
-function Settle-FluxProcessesGone {
+function Wait-FluxProcessGone {
     $deadline = (Get-Date).AddSeconds(15)
     $emptySnapshots = 0
     while ((Get-Date) -lt $deadline) {
-        $current = Get-FluxProcesses
+        $current = Get-FluxProcess
         if ($current.Count -eq 0) {
             $emptySnapshots++
             if ($emptySnapshots -ge 20) {
@@ -68,7 +77,7 @@ function Settle-FluxProcessesGone {
             }
         } else {
             $emptySnapshots = 0
-            Stop-Processes $current
+            Stop-SmokeProcess $current
         }
         Start-Sleep -Milliseconds 250
     }
@@ -91,6 +100,11 @@ function Wait-FluxReady([System.Diagnostics.Process]$Process) {
 }
 
 function Start-FluxAndWaitReady {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param()
+    if (!$PSCmdlet.ShouldProcess($Executable, "Start Flux and wait for readiness")) {
+        throw "Start-FluxAndWaitReady was suppressed by -WhatIf; the smoke cannot continue."
+    }
     $lastError = $null
     $maxAttempts = 3
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
@@ -111,7 +125,7 @@ function Start-FluxAndWaitReady {
             if (!$candidate.HasExited) {
                 Stop-Process -Id $candidate.Id -Force -ErrorAction SilentlyContinue
             }
-            Settle-FluxProcessesGone
+            Wait-FluxProcessGone
             if ($attempt -lt $maxAttempts) {
                 Start-Sleep -Seconds 1
             }
@@ -140,12 +154,12 @@ function Wait-FluxSecondaryProcessesSettled([DateTime]$StartTime, [int]$AllowedP
 }
 
 New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
-$staleFlux = Get-FluxProcesses
+$staleFlux = Get-FluxProcess
 if ($staleFlux.Count -gt 0) {
     Write-Host "Stopping $($staleFlux.Count) stale Flux process(es) before single-instance smoke."
-    Stop-Processes $staleFlux
+    Stop-SmokeProcess $staleFlux
 }
-Settle-FluxProcessesGone
+Wait-FluxProcessGone
 $appData = Join-Path $WorkDirectory "AppData"
 New-Item -ItemType Directory -Path (Join-Path $appData "FluxLauncher") -Force | Out-Null
 $env:APPDATA = $appData
@@ -166,8 +180,8 @@ $settingsPath = Join-Path $appData "FluxLauncher\settings.json"
 }
 '@ | Set-Content -LiteralPath $settingsPath -Encoding utf8
 
-$initialFlux = Get-FluxProcesses
-$initialEverything = Get-EverythingProcesses
+$initialFlux = Get-FluxProcess
+$initialEverything = Get-EverythingProcess
 $first = $null
 $second = $null
 try {
@@ -186,12 +200,14 @@ try {
             try {
                 $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction Stop).CommandLine
             } catch {
+                # A process may exit between the snapshot and the command line query.
+                Write-Verbose "Ignoring command line lookup failure: $($_.Exception.Message)"
             }
             Write-Host "Id=$($_.Id) StartTime=$($_.StartTime.ToUniversalTime().ToString('O')) MainWindowHandle=$($_.MainWindowHandle) MainWindowTitle=[$($_.MainWindowTitle)] CommandLine=[$commandLine]"
         }
         throw "First launch left an additional Flux process alive: $($firstFlux.Count)."
     }
-    $everythingAfterFirst = Get-EverythingProcesses
+    $everythingAfterFirst = Get-EverythingProcess
     if ($everythingAfterFirst.Count -gt ($initialEverything.Count + 1)) {
         throw "First launch created more than one additional Everything process: $($everythingAfterFirst.Count)."
     }
@@ -211,7 +227,7 @@ try {
     if ($finalFlux.Count -gt ($initialFlux.Count + 1)) {
         throw "Second launch created a duplicate Flux process: $($finalFlux.Count)."
     }
-    $finalEverything = Get-EverythingProcesses
+    $finalEverything = Get-EverythingProcess
     if ($finalEverything.Count -gt ($initialEverything.Count + 1)) {
         throw "Second launch created a duplicate Everything process: $($finalEverything.Count)."
     }
@@ -230,7 +246,7 @@ catch {
     throw
 }
 finally {
-    Stop-Processes (Get-FluxProcesses)
+    Stop-SmokeProcess (Get-FluxProcess)
     if ($null -ne $first -and !$first.HasExited) {
         Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
     }

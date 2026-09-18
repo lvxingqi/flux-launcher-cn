@@ -30,6 +30,11 @@ $virtual = [System.Windows.Forms.SystemInformation]::VirtualScreen
 $processName = [System.IO.Path]::GetFileNameWithoutExtension($Executable)
 
 function Stop-FluxProcessesAndWait {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'None')]
+    param()
+    if (!$PSCmdlet.ShouldProcess($processName, "Stop running launcher processes and wait")) {
+        return
+    }
     $existing = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
     foreach ($item in $existing) {
         if (!$item.HasExited) {
@@ -96,6 +101,7 @@ foreach ($mode in $modes) {
             Wait-Process -Id $process.Id -Timeout 10 -ErrorAction SilentlyContinue
         } catch {
             # The process may already have exited after single-instance handoff.
+            Write-Verbose "Ignoring wait failure for pid $($process.Id): $($_.Exception.Message)"
         }
         Stop-FluxProcessesAndWait
         Remove-Item Env:FLUX_SMOKE_MONITOR_PREFERENCE -ErrorAction SilentlyContinue

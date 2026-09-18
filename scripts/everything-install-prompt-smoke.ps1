@@ -330,6 +330,7 @@ try {
                     Stop-Process -Id $candidate.Id -Force -ErrorAction SilentlyContinue
                 }
             } catch {
+                Write-Verbose "Ignoring smoke process cleanup failure: $($_.Exception.Message)"
             }
         }
     }
