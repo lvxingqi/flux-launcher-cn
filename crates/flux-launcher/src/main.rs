@@ -442,9 +442,6 @@ fn main() {
     let settings_visible = settings_ui.visible;
     let settings_tab = settings_ui.tab;
     let language_preference = settings_state.language_preference;
-    let tray_settings_smoke_pending = Rc::new(Cell::new(
-        std::env::var_os("FLUX_SMOKE_TRAY_SETTINGS").is_some(),
-    ));
     let show_results = signal(false);
     let activation_key = signal(settings.activation_hotkey.key.clone());
     let activation_display = signal(hotkeys::display_config(&settings.activation_hotkey));
@@ -696,7 +693,6 @@ fn main() {
         std::env::var_os("FLUX_SMOKE_VISUAL_SETTINGS").is_some();
     let everything_plugins_smoke_for_interval =
         std::env::var_os("FLUX_SMOKE_EVERYTHING_PLUGINS").is_some();
-    let tray_settings_smoke_pending_for_interval = Rc::clone(&tray_settings_smoke_pending);
     let mut last_icon_generation = icon_refresh_generation.get();
     let mut last_launcher_width = launcher_width.get();
     let mut last_launcher_height = launcher_height.get();
@@ -2237,7 +2233,7 @@ fn main() {
         .backdrop(Backdrop::Acrylic)
         .theme(launcher_theme())
         .content(content)
-        .on_interval(SEARCH_INTERVAL, move |ctx| {
+        .on_interval(SEARCH_INTERVAL, move |_ctx| {
             let current_width = width_for_interval.get();
             let current_height = height_for_interval.get();
             let settings_is_visible = settings_visible_for_interval.get();
@@ -2517,14 +2513,6 @@ fn main() {
             if icon_completion_generation_changed(last_icon_generation, completed_icon_generation) {
                 last_icon_generation = completed_icon_generation;
                 icon_refresh_generation_for_interval.set(completed_icon_generation);
-            }
-            if tray_settings_smoke_pending_for_interval.replace(false) {
-                // Exercise the same lifecycle order as the tray Settings item,
-                // without relying on brittle screen-coordinate tray automation.
-                settings_visible_for_interval.set(true);
-                ctx.show_window();
-                size_for_interval.set(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT);
-                return;
             }
             let next_query = query_for_interval.get();
             if next_query == last_query {

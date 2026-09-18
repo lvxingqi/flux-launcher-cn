@@ -412,6 +412,121 @@ function Initialize-FluxKeyboardLayout([IntPtr]$Handle) {
     }
     return $probe
 }
+function Open-FluxTrayMenu {
+    # 走真实 Win32 托盘路径弹出右键菜单：先把光标移到目标点（windi 的 track_menu
+    # 用 GetCursorPos 决定菜单弹出位置），再向启动器窗口投递托盘回调消息。
+    # 返回实测的原生菜单矩形（窗口类 #32768），供调用方按行定位菜单项。
+    param(
+        [Parameter(Mandatory = $true)][IntPtr]$LauncherHandle,
+        [Parameter(Mandatory = $true)][int]$MenuX,
+        [Parameter(Mandatory = $true)][int]$MenuY,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+    $wmTrayIcon = 0x8001
+    $wmRButtonUp = 0x0205
+    [FluxWallpaper]::SetCursorPos($MenuX, $MenuY) | Out-Null
+    if (![FluxWallpaper]::PostMessage($LauncherHandle, $wmTrayIcon, [UIntPtr]::Zero, [IntPtr]$wmRButtonUp)) {
+        throw "$Context could not post the real tray-menu callback."
+    }
+    $menuDeadline = (Get-Date).AddSeconds(2)
+    $menuReady = $false
+    while ((Get-Date) -lt $menuDeadline) {
+        if ([FluxWallpaper]::WindowClassAtPoint($MenuX, $MenuY) -eq "#32768") {
+            $menuReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    if (!$menuReady) {
+        throw "$Context could not observe the native popup menu."
+    }
+    # 用真实弹窗 HWND 与实测矩形定位，而不是假设键盘焦点一定落在菜单上。
+    $menuHandle = [FluxWallpaper]::WindowHandleAtPoint($MenuX, $MenuY)
+    if ($menuHandle -eq [IntPtr]::Zero) {
+        throw "$Context could not resolve the popup menu HWND."
+    }
+    $menuRect = New-Object FluxWallpaper+RECT
+    if (![FluxWallpaper]::GetWindowRect($menuHandle, [ref]$menuRect)) {
+        throw "$Context could not read the popup menu rectangle."
+    }
+    $menuWidth = [FluxWallpaper]::RectWidth($menuRect)
+    $menuHeight = [FluxWallpaper]::RectHeight($menuRect)
+    if ($menuWidth -lt 80 -or $menuHeight -lt 60) {
+        throw "$Context observed an invalid popup menu rectangle: ${menuWidth}x${menuHeight}."
+    }
+    Write-Host "$Context tray popup rectangle: ${menuWidth}x${menuHeight}"
+    return [pscustomobject]@{
+        Left = $menuRect.Left
+        Top = $menuRect.Top
+        Width = $menuWidth
+        Height = $menuHeight
+    }
+}
+
+function Invoke-FluxTrayMenuItemClick([int]$X, [int]$Y) {
+    [FluxWallpaper]::SetCursorPos($X, $Y) | Out-Null
+    [FluxWallpaper]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [FluxWallpaper]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Invoke-FluxTraySettingsClick {
+    # 真实托盘菜单选择 Settings（菜单顺序：Show launcher / Settings / 分隔 /
+    # Game Mode / 分隔 / Exit，第二行即 Settings），随后测量设置面板几何。
+    # 返回对象同时给出「首个可见帧」与「最终帧」尺寸：首个可见帧用于断言面板
+    # 不得先以紧凑搜索条闪现，最终帧用于既有的「打开后达到完整尺寸」断言。
+    param(
+        [Parameter(Mandatory = $true)][IntPtr]$LauncherHandle,
+        [Parameter(Mandatory = $true)][int]$MenuX,
+        [Parameter(Mandatory = $true)][int]$MenuY,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [int]$MinimumWidth = 680,
+        [int]$MinimumHeight = 400
+    )
+    $menu = Open-FluxTrayMenu -LauncherHandle $LauncherHandle -MenuX $MenuX -MenuY $MenuY -Context $Context
+    $settingsX = $menu.Left + [int]($menu.Width / 2)
+    $settingsY = $menu.Top + [int]($menu.Height * 0.38)
+    Write-Host "$Context Settings click=($settingsX,$settingsY)"
+    Invoke-FluxTrayMenuItemClick -X $settingsX -Y $settingsY
+    $geometryDeadline = (Get-Date).AddSeconds(3)
+    $firstVisible = $false
+    $firstWidth = 0
+    $firstHeight = 0
+    $finalWidth = 0
+    $finalHeight = 0
+    $full = $false
+    while ((Get-Date) -lt $geometryDeadline) {
+        if ([FluxWallpaper]::IsWindowVisible($LauncherHandle)) {
+            $panelRect = New-Object FluxWallpaper+RECT
+            if ([FluxWallpaper]::GetWindowRect($LauncherHandle, [ref]$panelRect)) {
+                $finalWidth = [FluxWallpaper]::RectWidth($panelRect)
+                $finalHeight = [FluxWallpaper]::RectHeight($panelRect)
+                if (!$firstVisible) {
+                    $firstWidth = $finalWidth
+                    $firstHeight = $finalHeight
+                    $firstVisible = $true
+                    Write-Host "$Context first visible frame: ${firstWidth}x${firstHeight}"
+                }
+                if ($finalWidth -ge $MinimumWidth -and $finalHeight -ge $MinimumHeight) {
+                    $full = $true
+                    break
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    return [pscustomobject]@{
+        FirstVisible = $firstVisible
+        FirstWidth = $firstWidth
+        FirstHeight = $firstHeight
+        Width = $finalWidth
+        Height = $finalHeight
+        Full = $full
+        MenuWidth = $menu.Width
+        MenuHeight = $menu.Height
+    }
+}
+
+
 
 $wallpaperPath = Join-Path $OutputDirectory "mica-probe-wallpaper.png"
 $wallpaper = New-Object System.Drawing.Bitmap 1920, 1080
@@ -784,7 +899,6 @@ try {
     $deactivationCpuDelta = 0.0
     $deactivationIdleMemory = $null
     $traySettingsAfterDeactivationProbe = $false
-    $traySettingsAfterDeactivationWindowFound = $false
     $traySettingsAfterDeactivationWindowWidth = 0
     $traySettingsAfterDeactivationWindowHeight = 0
     if ($FocusToggleSmoke) {
@@ -987,71 +1101,28 @@ try {
         if ($TraySettingsAfterDeactivationSmoke) {
             # This is the user's lifecycle: leave a query active, activate another
             # top-level window so Flux hides, then use the real Win32 tray menu to
-            # choose Settings. Posting the tray callback avoids brittle taskbar
-            # notification-area coordinates while still exercising TrayMenuItem,
-            # TrackPopupMenu, the Settings callback, and native show/resize order.
+            # choose Settings. The shared tray helper exercises TrayMenuItem,
+            # TrackPopupMenu, the Settings callback, and native show/resize order
+            # without relying on brittle taskbar notification-area coordinates.
+            # The cleanup block below still posts the raw tray callback, so the
+            # shared menu anchor point and message constants stay here.
             $wmTrayIcon = 0x8001
             $wmRButtonUp = 0x0205
             $trayMenuX = $clickX
             $trayMenuY = $clickY
-            [FluxWallpaper]::SetCursorPos($trayMenuX, $trayMenuY) | Out-Null
-            if (![FluxWallpaper]::PostMessage($launcherHandle, $wmTrayIcon, [UIntPtr]::Zero, [IntPtr]$wmRButtonUp)) {
-                throw "Tray Settings deactivation smoke could not post the real tray-menu callback."
-            }
-            $trayMenuDeadline = (Get-Date).AddSeconds(2)
-            $trayMenuReady = $false
-            while ((Get-Date) -lt $trayMenuDeadline) {
-                if ([FluxWallpaper]::WindowClassAtPoint($trayMenuX, $trayMenuY) -eq "#32768") {
-                    $trayMenuReady = $true
-                    break
-                }
-                Start-Sleep -Milliseconds 50
-            }
-            if (!$trayMenuReady) {
-                throw "Tray Settings deactivation smoke could not observe the native popup menu."
-            }
-            # Use the real popup HWND and its measured native rectangle rather
-            # than assuming keyboard focus belongs to the menu on the hosted VM.
-            # The menu order is Show launcher, Settings, separator, Game Mode,
-            # separator, Exit; the second row is therefore the Settings item.
-            $trayMenuHandle = [FluxWallpaper]::WindowHandleAtPoint($trayMenuX, $trayMenuY)
-            if ($trayMenuHandle -eq [IntPtr]::Zero) {
-                throw "Tray Settings deactivation smoke could not resolve the popup menu HWND."
-            }
-            $trayMenuRect = New-Object FluxWallpaper+RECT
-            if (![FluxWallpaper]::GetWindowRect($trayMenuHandle, [ref]$trayMenuRect)) {
-                throw "Tray Settings deactivation smoke could not read the popup menu rectangle."
-            }
-            $trayMenuWidth = [FluxWallpaper]::RectWidth($trayMenuRect)
-            $trayMenuHeight = [FluxWallpaper]::RectHeight($trayMenuRect)
-            if ($trayMenuWidth -lt 80 -or $trayMenuHeight -lt 60) {
-                throw "Tray Settings deactivation smoke observed an invalid popup menu rectangle: ${trayMenuWidth}x${trayMenuHeight}."
-            }
-            $settingsMenuClickX = $trayMenuRect.Left + [int]($trayMenuWidth / 2)
-            $settingsMenuClickY = $trayMenuRect.Top + [int]($trayMenuHeight * 0.38)
-            Write-Host "Tray popup rectangle: ${trayMenuWidth}x${trayMenuHeight}; Settings click=($settingsMenuClickX,$settingsMenuClickY)"
-            [FluxWallpaper]::SetCursorPos($settingsMenuClickX, $settingsMenuClickY) | Out-Null
-            [FluxWallpaper]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-            [FluxWallpaper]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-            $settingsGeometryDeadline = (Get-Date).AddSeconds(3)
-            while ((Get-Date) -lt $settingsGeometryDeadline) {
-                if ([FluxWallpaper]::IsWindowVisible($launcherHandle)) {
-                    $settingsAfterDeactivationRect = New-Object FluxWallpaper+RECT
-                    if ([FluxWallpaper]::GetWindowRect($launcherHandle, [ref]$settingsAfterDeactivationRect)) {
-                        $traySettingsAfterDeactivationWindowWidth = [FluxWallpaper]::RectWidth($settingsAfterDeactivationRect)
-                        $traySettingsAfterDeactivationWindowHeight = [FluxWallpaper]::RectHeight($settingsAfterDeactivationRect)
-                        if ($traySettingsAfterDeactivationWindowWidth -ge 680 -and $traySettingsAfterDeactivationWindowHeight -ge 400) {
-                            $traySettingsAfterDeactivationWindowFound = $true
-                            break
-                        }
-                    }
-                }
-                Start-Sleep -Milliseconds 100
-            }
-            $traySettingsAfterDeactivationProbe = $traySettingsAfterDeactivationWindowFound
+            $afterDeactivationTray = Invoke-FluxTraySettingsClick `
+                -LauncherHandle $launcherHandle -MenuX $trayMenuX -MenuY $trayMenuY `
+                -Context "Settings after deactivation"
+            $traySettingsAfterDeactivationWindowWidth = $afterDeactivationTray.Width
+            $traySettingsAfterDeactivationWindowHeight = $afterDeactivationTray.Height
+            $traySettingsAfterDeactivationProbe = $afterDeactivationTray.Full
             Write-Host "Settings after deactivation geometry: ${traySettingsAfterDeactivationWindowWidth}x${traySettingsAfterDeactivationWindowHeight} full=$traySettingsAfterDeactivationProbe"
             if (!$traySettingsAfterDeactivationProbe) {
                 throw "Tray Settings after deactivation smoke reproduced compact/invalid window: ${traySettingsAfterDeactivationWindowWidth}x${traySettingsAfterDeactivationWindowHeight}."
+            }
+            $settingsAfterDeactivationRect = New-Object FluxWallpaper+RECT
+            if (![FluxWallpaper]::GetWindowRect($launcherHandle, [ref]$settingsAfterDeactivationRect)) {
+                throw "Tray Settings deactivation smoke could not read the expanded Settings rectangle."
             }
             Save-Screenshot "tray-settings-after-deactivation.png"
             # Let the native Settings resize/deactivation guard settle before the
@@ -1110,51 +1181,12 @@ try {
             if (!$secondDeactivationHidden) {
                 throw "Tray Settings regression could not hide the first Settings panel after the second outside click."
             }
-            [FluxWallpaper]::SetCursorPos($trayMenuX, $trayMenuY) | Out-Null
-            if (![FluxWallpaper]::PostMessage($launcherHandle, $wmTrayIcon, [UIntPtr]::Zero, [IntPtr]$wmRButtonUp)) {
-                throw "Tray Settings regression could not reopen the tray menu for the second Settings attempt."
-            }
-            $secondMenuDeadline = (Get-Date).AddSeconds(2)
-            $secondMenuReady = $false
-            while ((Get-Date) -lt $secondMenuDeadline) {
-                if ([FluxWallpaper]::WindowClassAtPoint($trayMenuX, $trayMenuY) -eq "#32768") {
-                    $secondMenuReady = $true
-                    break
-                }
-                Start-Sleep -Milliseconds 50
-            }
-            if (!$secondMenuReady) {
-                throw "Tray Settings regression could not observe the second native popup menu."
-            }
-            $secondMenuHandle = [FluxWallpaper]::WindowHandleAtPoint($trayMenuX, $trayMenuY)
-            $secondMenuRect = New-Object FluxWallpaper+RECT
-            if ($secondMenuHandle -eq [IntPtr]::Zero -or
-                ![FluxWallpaper]::GetWindowRect($secondMenuHandle, [ref]$secondMenuRect)) {
-                throw "Tray Settings regression could not read the second popup menu rectangle."
-            }
-            $secondSettingsX = $secondMenuRect.Left + [int]([FluxWallpaper]::RectWidth($secondMenuRect) / 2)
-            $secondSettingsY = $secondMenuRect.Top + [int]([FluxWallpaper]::RectHeight($secondMenuRect) * 0.38)
-            [FluxWallpaper]::SetCursorPos($secondSettingsX, $secondSettingsY) | Out-Null
-            [FluxWallpaper]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-            [FluxWallpaper]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-            $secondSettingsDeadline = (Get-Date).AddSeconds(3)
-            $secondSettingsWidth = 0
-            $secondSettingsHeight = 0
-            $secondSettingsFull = $false
-            while ((Get-Date) -lt $secondSettingsDeadline) {
-                if ([FluxWallpaper]::IsWindowVisible($launcherHandle)) {
-                    $secondSettingsRect = New-Object FluxWallpaper+RECT
-                    if ([FluxWallpaper]::GetWindowRect($launcherHandle, [ref]$secondSettingsRect)) {
-                        $secondSettingsWidth = [FluxWallpaper]::RectWidth($secondSettingsRect)
-                        $secondSettingsHeight = [FluxWallpaper]::RectHeight($secondSettingsRect)
-                        if ($secondSettingsWidth -ge 680 -and $secondSettingsHeight -ge 400) {
-                            $secondSettingsFull = $true
-                            break
-                        }
-                    }
-                }
-                Start-Sleep -Milliseconds 100
-            }
+            $secondTrayAttempt = Invoke-FluxTraySettingsClick `
+                -LauncherHandle $launcherHandle -MenuX $trayMenuX -MenuY $trayMenuY `
+                -Context "Tray Settings regression (second attempt)"
+            $secondSettingsWidth = $secondTrayAttempt.Width
+            $secondSettingsHeight = $secondTrayAttempt.Height
+            $secondSettingsFull = $secondTrayAttempt.Full
             Write-Host "Settings second tray attempt geometry: ${secondSettingsWidth}x${secondSettingsHeight} full=$secondSettingsFull"
             if (!$secondSettingsFull) {
                 throw "Tray Settings regression reproduced on the second attempt: ${secondSettingsWidth}x${secondSettingsHeight}."
@@ -2430,11 +2462,11 @@ try {
         Save-Screenshot "pointer-click-history-result.png"
     }
     if ($TraySettingsSmoke) {
-        $env:FLUX_SMOKE_TRAY_SETTINGS = "1"
+        # 托盘设置烟雾测试走真实托盘菜单触发，不再依赖任何环境变量钩子；
+        # 子进程保持隐藏启动，唯一的显示路径就是托盘菜单里的 Settings。
         Remove-Item Env:FLUX_OPEN_SETTINGS -ErrorAction SilentlyContinue
     } else {
         $env:FLUX_OPEN_SETTINGS = "1"
-        Remove-Item Env:FLUX_SMOKE_TRAY_SETTINGS -ErrorAction SilentlyContinue
     }
     if ($VisualSettingsSmoke) {
         $env:FLUX_SMOKE_SETTINGS_UI = "1"
@@ -2453,17 +2485,16 @@ try {
     if ($TraySettingsSmoke) {
         # The Settings child must become an independent instance even without the
         # visual smoke: it starts hidden like the tray-resident launcher, so the
-        # tray-settings hook produces the only visible frame.
+        # real tray menu is the only path that makes it visible.
         $env:FLUX_DISABLE_SINGLE_INSTANCE = "1"
     }
     $settingsStdoutPath = Join-Path $OutputDirectory "settings.stdout.log"
     $settingsStderrPath = Join-Path $OutputDirectory "settings.stderr.log"
     $settingsArguments = @()
     if ($TraySettingsSmoke) {
-        # Tray-settings lifecycle smoke: start hidden (--startup) like the real
-        # tray-resident launcher. The smoke hook is then the only activation
-        # path, and its on_window_show callback applies the full Settings size
-        # before the first frame is presented, so no compact frame can flash.
+        # 托盘设置烟雾测试：子进程以 --startup 隐藏启动，等同常驻托盘的启动器。
+        # 唯一的显示路径是真实托盘菜单里的 Settings，其 on_window_show 回调会在
+        # 首帧呈现前应用完整设置尺寸，因此不会闪出紧凑搜索条。
         $settingsArguments = @("--startup")
     }
     $settingsProcess = Start-Process -FilePath $Executable -ArgumentList $settingsArguments -PassThru -RedirectStandardOutput $settingsStdoutPath -RedirectStandardError $settingsStderrPath
@@ -2490,34 +2521,44 @@ try {
     $visualPreviewPersistenceProbe = $false
     try {
         if ($TraySettingsSmoke) {
-            $firstFrameChecked = $false
-            for ($attempt = 0; $attempt -lt 60 -and !$firstFrameChecked; $attempt++) {
-                Start-Sleep -Milliseconds 100
-                $settingsProcess.Refresh()
-                $firstFrameHwnd = Get-LauncherWindowHandle $settingsProcess
-                if ($firstFrameHwnd -eq [IntPtr]::Zero) {
-                    continue
-                }
-                if (![FluxWallpaper]::IsWindowVisible($firstFrameHwnd)) {
-                    # A hidden pre-show HWND still reports the compact default
-                    # rect; only a visible frame can carry the first-frame
-                    # invariant asserted below.
-                    continue
-                }
-                $firstFrameRect = New-Object FluxWallpaper+RECT
-                if (![FluxWallpaper]::GetWindowRect($firstFrameHwnd, [ref]$firstFrameRect)) {
-                    continue
-                }
-                $firstFrameWidth = [FluxWallpaper]::RectWidth($firstFrameRect)
-                $firstFrameHeight = [FluxWallpaper]::RectHeight($firstFrameRect)
-                Write-Host "Tray Settings first-frame geometry: ${firstFrameWidth}x${firstFrameHeight}"
-                if ($firstFrameHeight -lt 480 -or $firstFrameWidth -lt 680) {
-                    throw "Tray Settings first frame was undersized: ${firstFrameWidth}x${firstFrameHeight}."
-                }
-                $firstFrameChecked = $true
+            # 真实托盘生命周期：子进程以 --startup 隐藏启动（等同常驻托盘的启动器），
+            # 唯一的显示路径是托盘右键菜单里的 Settings。这里同时锁定第 11 节不变量
+            # （首个可见帧必须是完整设置面板，不得先闪紧凑搜索条）与实际尺寸。
+            $settingsHandle = Get-LauncherWindowHandle $settingsProcess
+            if ($settingsHandle -eq [IntPtr]::Zero) {
+                throw "Tray Settings smoke could not resolve the hidden launcher HWND."
             }
-            if (!$firstFrameChecked) {
+            if ([FluxWallpaper]::IsWindowVisible($settingsHandle)) {
+                throw "Tray Settings smoke expected the launcher child to start hidden."
+            }
+            $probeProcess.Refresh()
+            $trayAnchorHandle = $probeProcess.MainWindowHandle
+            if ($trayAnchorHandle -eq [IntPtr]::Zero) {
+                $trayAnchorHandle = [FluxWallpaper]::FindVisibleWindowByProcessId([uint32]$probeProcess.Id)
+            }
+            if ($trayAnchorHandle -eq [IntPtr]::Zero) {
+                throw "Tray Settings smoke could not find the deterministic probe window."
+            }
+            $trayAnchorRect = New-Object FluxWallpaper+RECT
+            if (![FluxWallpaper]::GetWindowRect($trayAnchorHandle, [ref]$trayAnchorRect)) {
+                throw "Tray Settings smoke could not read the probe window rectangle."
+            }
+            $trayAnchorX = [int](($trayAnchorRect.Left + $trayAnchorRect.Right) / 2)
+            $trayAnchorY = [int](($trayAnchorRect.Top + $trayAnchorRect.Bottom) / 2)
+            $traySettingsAttempt = Invoke-FluxTraySettingsClick `
+                -LauncherHandle $settingsHandle -MenuX $trayAnchorX -MenuY $trayAnchorY `
+                -Context "Tray Settings"
+            if (!$traySettingsAttempt.FirstVisible) {
                 throw "Tray Settings smoke could not observe the first Settings frame."
+            }
+            $firstFrameWidth = $traySettingsAttempt.FirstWidth
+            $firstFrameHeight = $traySettingsAttempt.FirstHeight
+            Write-Host "Tray Settings first-frame geometry: ${firstFrameWidth}x${firstFrameHeight}"
+            if ($firstFrameHeight -lt 480 -or $firstFrameWidth -lt 680) {
+                throw "Tray Settings first frame was undersized: ${firstFrameWidth}x${firstFrameHeight}."
+            }
+            if (!$traySettingsAttempt.Full) {
+                throw "Tray Settings smoke observed an incomplete Settings panel: $($traySettingsAttempt.Width)x$($traySettingsAttempt.Height)."
             }
         }
         Start-Sleep -Seconds 2
@@ -2534,6 +2575,10 @@ try {
         }
         if ($VisualSettingsSmoke) {
             $settingsHwnd = Get-LauncherWindowHandle $settingsProcess
+        } elseif ($TraySettingsSmoke) {
+            # The tray-driven child already exposed its HWND for the first-frame
+            # probe; reuse it instead of consulting a possibly stale MainWindowHandle.
+            $settingsHwnd = $settingsHandle
         } else {
             $settingsHwnd = $settingsProcess.MainWindowHandle
             if ($settingsHwnd -eq [IntPtr]::Zero) {
@@ -2995,7 +3040,6 @@ try {
         }
         Remove-Item Env:FLUX_OPEN_SETTINGS -ErrorAction SilentlyContinue
         Remove-Item Env:FLUX_SMOKE_SETTINGS_UI -ErrorAction SilentlyContinue
-        Remove-Item Env:FLUX_SMOKE_TRAY_SETTINGS -ErrorAction SilentlyContinue
         Remove-Item Env:FLUX_SMOKE_SETTINGS_TAB -ErrorAction SilentlyContinue
         Remove-Item Env:FLUX_SMOKE_VISUAL_SETTINGS -ErrorAction SilentlyContinue
         Remove-Item Env:FLUX_DISABLE_SINGLE_INSTANCE -ErrorAction SilentlyContinue
