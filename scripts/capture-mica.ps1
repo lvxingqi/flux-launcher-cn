@@ -1356,6 +1356,12 @@ try {
         $profilePeakWorkingSet = [int64]$profileStart.WorkingSetBytes
         $profilePeakHandles = [int64]$profileStart.HandleCount
         $profilePeakThreads = [int64]$profileStart.ThreadCount
+        # Scenario baselines: Idle is the settled, empty-query reference every other
+        # phase is compared against. Phases are recorded rather than gated so the
+        # first runs establish numbers before any budget is claimed for them.
+        $resourceProfileScenarios = [ordered]@{
+            Idle = $profileStart
+        }
         for ($cycle = 0; $cycle -lt $profileCycles; $cycle++) {
             $profileQuery = $profileQueries[$cycle % $profileQueries.Count]
             $shell.SendKeys("^a")
@@ -1386,6 +1392,7 @@ try {
         Start-Sleep -Seconds 3
         $profileQuietEnd = Get-MemorySnapshot $process
         $profileCpuEnd = Get-CpuTimeMillisecond $process
+        $resourceProfileScenarios.ChurnQuiet = $profileQuietEnd
         $profilePrivateGrowth = [int64]$profileEnd.PrivateBytes - [int64]$profileStart.PrivateBytes
         $profileWorkingSetGrowth = [int64]$profileEnd.WorkingSetBytes - [int64]$profileStart.WorkingSetBytes
         $profileHandleGrowth = [int64]$profileEnd.HandleCount - [int64]$profileStart.HandleCount
@@ -1395,6 +1402,24 @@ try {
         $profileQuietHandleGrowth = [int64]$profileQuietEnd.HandleCount - [int64]$profileStart.HandleCount
         $profileQuietThreadGrowth = [int64]$profileQuietEnd.ThreadCount - [int64]$profileStart.ThreadCount
         $profileCpuDelta = [Math]::Round($profileCpuEnd - $profileCpuStart, 2)
+        # Icon cache pressure: single-character queries surface the widest distinct
+        # icon target set, driving the 128-entry shell icon LRU towards its bound.
+        # Recorded only; the gated budget above stays the single CI tripwire.
+        foreach ($pressureCode in 97..122) {
+            $shell.SendKeys("^a")
+            $shell.SendKeys("{BACKSPACE}")
+            $shell.SendKeys([string][char]$pressureCode)
+            Start-Sleep -Milliseconds 90
+        }
+        $iconPressureSnapshot = Get-MemorySnapshot $process
+        $resourceProfileScenarios.IconCachePressure = $iconPressureSnapshot
+        $shell.SendKeys("^a")
+        $shell.SendKeys("{BACKSPACE}")
+        Start-Sleep -Seconds 3
+        $iconPressureQuietSnapshot = Get-MemorySnapshot $process
+        $resourceProfileScenarios.IconCachePressureQuiet = $iconPressureQuietSnapshot
+        $iconPressureQuietPrivateGrowth =
+            [int64]$iconPressureQuietSnapshot.PrivateBytes - [int64]$profileStart.PrivateBytes
         $resourceProfileSummary = [ordered]@{
             Cycles = $profileCycles
             Queries = $profileQueries
@@ -1415,6 +1440,8 @@ try {
             QuietHandleGrowth = $profileQuietHandleGrowth
             QuietThreadGrowth = $profileQuietThreadGrowth
             CpuTimeMilliseconds = $profileCpuDelta
+            Scenarios = $resourceProfileScenarios
+            IconCachePressurePrivateGrowthBytes = $iconPressureQuietPrivateGrowth
         }
         # This is a coarse CI guard for catastrophic retained growth, not proof that a
         # process is leak-free. Long-run PerfMon/WPR remains the authoritative follow-up.
@@ -1426,6 +1453,7 @@ try {
             throw "Resource profile growth budget exceeded after quiet period: private=$profileQuietPrivateGrowth bytes handles=$profileQuietHandleGrowth threads=$profileQuietThreadGrowth after $profileCycles cycles."
         }
         Write-Host "Resource profile: cycles=$profileCycles private_growth=$profilePrivateGrowth quiet_private_growth=$profileQuietPrivateGrowth working_set_growth=$profileWorkingSetGrowth quiet_working_set_growth=$profileQuietWorkingSetGrowth handle_growth=$profileHandleGrowth quiet_handle_growth=$profileQuietHandleGrowth thread_growth=$profileThreadGrowth quiet_thread_growth=$profileQuietThreadGrowth cpu_ms=$profileCpuDelta"
+        Write-Host "Resource profile scenarios (private bytes): idle=$($profileStart.PrivateBytes) churn_quiet=$($profileQuietEnd.PrivateBytes) icon_cache_pressure=$($iconPressureSnapshot.PrivateBytes) icon_cache_pressure_quiet=$($iconPressureQuietSnapshot.PrivateBytes) icon_quiet_growth=$iconPressureQuietPrivateGrowth"
     }
     if ($CommandPrioritySmoke) {
         foreach ($commandQuery in @("cmd", "powershell", "pwsh")) {
