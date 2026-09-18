@@ -2967,6 +2967,10 @@ try {
 
             # Reopen a fresh isolated Settings process. Its first preview geometry must load
             # the values just persisted by Apply, proving this is not only in-memory state.
+            # The reopen child must open the panel on startup, so FLUX_OPEN_SETTINGS has to
+            # be set again: the tray-settings run deliberately unsets it for the hidden tray
+            # child above. Environment changes only affect processes started from now on.
+            $env:FLUX_OPEN_SETTINGS = "1"
             $reopenStdoutPath = Join-Path $OutputDirectory "settings-reopen.stdout.log"
             $reopenStderrPath = Join-Path $OutputDirectory "settings-reopen.stderr.log"
             $reopenedSettingsProcess = Start-Process -FilePath $Executable -PassThru -RedirectStandardOutput $reopenStdoutPath -RedirectStandardError $reopenStderrPath
@@ -2976,9 +2980,18 @@ try {
             if (![FluxWallpaper]::GetWindowRect($reopenedSettingsHwnd, [ref]$reopenedSettingsRect)) {
                 throw "Visual persistence smoke could not find reopened Settings HWND."
             }
-            $reopenLog = if (Test-Path $reopenStderrPath) { Get-Content $reopenStderrPath -Raw } else { "" }
-            $reopenPidMatch = [regex]::Match($reopenLog, "Visual preview process started: pid=(\d+)")
-            if (!$reopenPidMatch.Success) {
+            # The preview child is announced after the reopened process boots D2D, opens the
+            # panel, and spawns the child; poll instead of assuming one fixed delay suffices.
+            $reopenPidMatch = $null
+            for ($attempt = 0; $attempt -lt 150 -and $null -eq $reopenPidMatch; $attempt++) {
+                $reopenLog = if (Test-Path $reopenStderrPath) { Get-Content $reopenStderrPath -Raw } else { "" }
+                $reopenPidMatch = [regex]::Match($reopenLog, "Visual preview process started: pid=(\d+)")
+                if (!$reopenPidMatch.Success) {
+                    $reopenPidMatch = $null
+                    Start-Sleep -Milliseconds 100
+                }
+            }
+            if ($null -eq $reopenPidMatch) {
                 throw "Visual persistence smoke did not observe a preview child after reopening Settings."
             }
             $reopenedPreviewProcessId = [int]$reopenPidMatch.Groups[1].Value
