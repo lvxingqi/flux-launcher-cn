@@ -25,6 +25,7 @@ pub(crate) mod sync;
 pub mod testing;
 pub mod text;
 pub mod theme;
+pub(crate) mod trace;
 pub mod ui;
 
 pub mod prelude {

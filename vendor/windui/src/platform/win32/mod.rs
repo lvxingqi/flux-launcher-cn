@@ -156,6 +156,7 @@ pub(crate) fn run(
     waker: Option<std::sync::Arc<crate::sync::WakerShared>>,
     single: Option<crate::single_instance::SingleInstance>,
 ) {
+    crate::trace::init_from_env();
     // 全局动画开关：显式配置优先；否则截屏路径恒开（保证终态稳定）、窗口路径随系统设置。
     let os_default = if cfg.screenshot.is_some() {
         true
@@ -851,6 +852,7 @@ struct Win32Wake {
 unsafe impl Send for Win32Wake {}
 impl crate::sync::RawWakeSignal for Win32Wake {
     fn signal(&self) {
+        crate::trace::event("wake-post", "");
         unsafe {
             let _ = PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -1603,6 +1605,7 @@ unsafe extern "system" fn wnd_proc(
             let need = state_from(hwnd)
                 .map(|s| s.handler.on_interval_fired(id.saturating_sub(1)))
                 .unwrap_or(false);
+            crate::trace::event("wm-timer", &format!("id={id} need={need}"));
             if need {
                 let _ = InvalidateRect(Some(hwnd), None, false);
             }
@@ -1610,6 +1613,7 @@ unsafe extern "system" fn wnd_proc(
         }
         // 跨线程唤醒：触发一帧（render 前会排空消息通道）。
         WM_APP_WAKE => {
+            crate::trace::event("wm-wake", "");
             let _ = InvalidateRect(Some(hwnd), None, false);
             LRESULT(0)
         }

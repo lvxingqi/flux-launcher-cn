@@ -322,7 +322,16 @@ fn query_everything(
     request: EverythingRequest,
 ) -> EverythingResponse {
     if client.is_none() {
+        let connect_started = std::time::Instant::now();
         *client = EverythingClient::new().ok();
+        crate::launch::trace_query_profile(
+            "everything-connect",
+            &format!(
+                "{:.1}ms\t{}",
+                connect_started.elapsed().as_secs_f64() * 1000.0,
+                client.is_some()
+            ),
+        );
     }
 
     let Some(ipc_client) = client.as_ref() else {
@@ -336,6 +345,7 @@ fn query_everything(
     };
 
     let query = request.query.clone();
+    let query_started = std::time::Instant::now();
     let list = ipc_client
         .query_wait(&query)
         .request_flags(RequestFlags::FileName | RequestFlags::Path)
@@ -343,6 +353,14 @@ fn query_everything(
         .max_results(MAX_RESULTS)
         .timeout(QUERY_TIMEOUT)
         .call();
+    crate::launch::trace_query_profile(
+        "everything-query",
+        &format!(
+            "{:.1}ms\t{}",
+            query_started.elapsed().as_secs_f64() * 1000.0,
+            list.is_ok()
+        ),
+    );
 
     match list {
         Ok(list) => {

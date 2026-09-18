@@ -1497,6 +1497,7 @@ impl UiHost {
         for pump in pumps.iter_mut() {
             results.append(&mut pump(&mut self.tree, root));
         }
+        crate::trace::event("drain", &results.len().to_string());
         self.pumps = pumps;
         for res in results {
             self.apply_app_effects(res);
@@ -1509,6 +1510,7 @@ impl UiHost {
     ///
     /// 返回本帧是否已经布局过（全窗路径据此跳过重复的 `layout_root`）。
     fn relayout_if_needed(&mut self, logical: Size) -> bool {
+        crate::trace::event("relayout", &format!("needs={}", self.damage.needs_relayout));
         if !self.damage.needs_relayout {
             return false;
         }
@@ -1588,6 +1590,7 @@ impl AppHandler for UiHost {
     fn render(&mut self, target: &mut dyn crate::render::RenderTarget, size: Size) {
         // 帧耗时计时（WINDUI_FPS=1 时在左上角显示，用于排查渲染开销）。
         let frame_t0 = std::time::Instant::now();
+        crate::trace::event("frame-begin", "");
         self.begin_frame();
         // 动画：清上一帧请求/脏区并刷新帧时钟，绘制中控件可重新请求。
         crate::anim::reset_request();
@@ -1615,6 +1618,10 @@ impl AppHandler for UiHost {
             self.render_partial(pixmap, size, s, damage.unwrap());
             self.finish_frame_damage();
             prof_frame("partial", frame_t0);
+            crate::trace::event(
+                "frame-end",
+                &format!("{:.1}\tpartial", frame_t0.elapsed().as_secs_f64() * 1000.0),
+            );
             return;
         }
 
@@ -1647,6 +1654,10 @@ impl AppHandler for UiHost {
         }
         self.finish_frame_damage();
         prof_frame("full", frame_t0);
+        crate::trace::event(
+            "frame-end",
+            &format!("{:.1}\tfull", frame_t0.elapsed().as_secs_f64() * 1000.0),
+        );
     }
 
     fn on_pointer(&mut self, mut ev: crate::event::PointerEvent) -> bool {
