@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 #endif
 #ifndef BuildDir
 #define BuildDir "target\x86_64-pc-windows-msvc\release"
