@@ -138,9 +138,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: visual-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   visual-smoke:
     runs-on: ${{ inputs.runner_label || 'windows-latest' }}
+    timeout-minutes: 45
 
     steps:
       - name: 检出代码
