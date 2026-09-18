@@ -23,6 +23,11 @@ ureq = { version = "2.12", default-features = false, features = ["tls"] }
 rust-i18n = "4.2.1"
 sys-locale = "0.3.2"
 
+# 资源管理器为手动创建的快捷方式从 exe 的嵌入图标取图标，因此图标在构建期嵌入。
+# build.rs 只在目标系统为 Windows 时执行嵌入，其他目标保持可编译。
+[build-dependencies]
+winresource = "0.1"
+
 [target.'cfg(windows)'.dependencies]
 everything-ipc = "0.1.4"
 windows = { version = "0.62", features = [

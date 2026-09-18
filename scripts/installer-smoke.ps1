@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Installer,
@@ -18,6 +18,9 @@ using System.Runtime.InteropServices;
 public static class FluxStartupSmokeNative {
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int ExtractIconEx(string lpszFile, int nIconIndex, IntPtr[] phiconLarge, IntPtr[] phiconSmall, int nIcons);
 }
 "@
 
@@ -100,6 +103,8 @@ function Assert-InstallerConfiguration {
         'Type: filesandordirs; Name: "{group}"',
         'Type: filesandordirs; Name: "{userappdata}\FluxLauncherCN"',
         'Type: filesandordirs; Name: "{userappdata}\FluxLauncher"',
+        'Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "Additional shortcuts:"; Flags: unchecked',
+        'Name: "{autodesktop}\Flux Launcher CN"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\flux-launcher.ico"; IconIndex: 0; Tasks: desktopicon',
         'IconFilename: "{app}\flux-launcher.ico"; IconIndex: 0'
     )
     foreach ($directive in $requiredDirectives) {
@@ -143,6 +148,67 @@ function Assert-StartMenuShortcutIcon {
     }
     Write-Host "Start Menu shortcut smoke passed: target and Flux Launcher icon are correct."
     return $shortcut.FullName
+}
+
+function Get-DesktopShortcutPath {
+    return (Join-Path ([Environment]::GetFolderPath('Desktop')) "Flux Launcher CN.lnk")
+}
+
+function Assert-EmbeddedExecutableIcon {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Executable
+    )
+
+    # 资源管理器为“发送到桌面”这类手动创建的快捷方式从目标 exe 的嵌入图标取图标，
+    # exe 没有图标资源时这些快捷方式会显示空白图标；安装器显式引用 .ico 只能覆盖
+    # 它自己创建的开始菜单快捷方式。
+    $iconCount = [FluxStartupSmokeNative]::ExtractIconEx($Executable, 0, $null, $null, 0)
+    if ($iconCount -lt 1) {
+        throw "Executable carries no embedded icon resource, so a manually created desktop shortcut cannot show the Flux Launcher icon: $Executable"
+    }
+    Write-Host "Embedded icon smoke passed: $Executable exposes $iconCount icon resource(s) for manually created shortcuts."
+}
+
+function Assert-DesktopShortcut {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstalledExe,
+        [Parameter(Mandatory = $true)]
+        [bool]$Expected,
+        # 安装前该快捷方式是否已存在。默认安装不应改变这个状态，也不能因为机器上
+        # 预先存在手动创建的快捷方式就判定失败。
+        [bool]$BaselineExists = $false
+    )
+
+    $shortcutPath = Get-DesktopShortcutPath
+    $exists = Test-Path $shortcutPath
+
+    if ($Expected -and -not $exists) {
+        throw "Desktop shortcut was not created although the desktopicon task was selected: $shortcutPath"
+    }
+    if (-not $Expected -and $exists -and -not $BaselineExists) {
+        throw "Desktop shortcut was created although the desktopicon task is unchecked by default: $shortcutPath"
+    }
+    if (-not $exists) {
+        Write-Host "Desktop shortcut smoke passed: no desktop shortcut exists unless the optional task is selected."
+        return $shortcutPath
+    }
+    if (-not $Expected) {
+        Write-Host "Desktop shortcut smoke passed: the default installation left the pre-existing shortcut untouched."
+        return $shortcutPath
+    }
+
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($shortcutPath)
+    if ($link.TargetPath -ne $InstalledExe) {
+        throw "Desktop shortcut target mismatch: expected $InstalledExe, got $($link.TargetPath)"
+    }
+    if ($link.IconLocation -notmatch "flux-launcher\.ico") {
+        throw "Desktop shortcut does not reference flux-launcher.ico: $($link.IconLocation)"
+    }
+    Write-Host "Desktop shortcut smoke passed: the optional task created a shortcut with the correct target and icon."
+    return $shortcutPath
 }
 
 function Wait-PathGone {
@@ -233,10 +299,14 @@ $installerPath = (Resolve-Path $Installer).Path
 $expectedExePath = (Resolve-Path $ExpectedExe).Path
 $defaultInstallRoot = Join-Path $workRoot "installed-default"
 $disabledInstallRoot = Join-Path $workRoot "installed-disabled"
+$desktopInstallRoot = Join-Path $workRoot "installed-desktop"
 $userDataRoot = Join-Path $env:APPDATA "FluxLauncher"
 $defaultLogPath = Join-Path $workRoot "installer-default.log"
 $disabledLogPath = Join-Path $workRoot "installer-disabled.log"
+$desktopLogPath = Join-Path $workRoot "installer-desktop.log"
 $originalStartupCommand = Get-StartupCommand
+$desktopShortcutExistsBefore = Test-Path (Get-DesktopShortcutPath)
+$desktopShortcutBackup = Join-Path $workRoot "desktop-shortcut-backup.lnk"
 
 Assert-InstallerConfiguration
 
@@ -251,6 +321,8 @@ try {
     $defaultInstalledExe = Get-InstalledExecutable -InstallRoot $defaultInstallRoot
     Assert-InstalledHash -InstalledExe $defaultInstalledExe
     $defaultShortcutPath = Assert-StartMenuShortcutIcon -InstalledExe $defaultInstalledExe
+    Assert-EmbeddedExecutableIcon -Executable $defaultInstalledExe
+    $null = Assert-DesktopShortcut -InstalledExe $defaultInstalledExe -Expected $false -BaselineExists $desktopShortcutExistsBefore
     New-Item -ItemType Directory -Force -Path $userDataRoot | Out-Null
     Set-Content -Path (Join-Path $userDataRoot "settings.json") -Value '{"smoke":true}' -NoNewline
     $defaultStartupCommand = Get-StartupCommand
@@ -302,9 +374,36 @@ try {
         -UserDataRoot $userDataRoot
     Assert-NoStartupEntry
 
-    Write-Host "Installer smoke passed: default startup enabled, startup opt-out, hidden --startup mode, hash validation, live-process shutdown before uninstall deletion, full install-root cleanup, Start Menu cleanup, user-data cleanup, and uninstall cleanup."
+    # /TASKS=desktopicon models the user selecting the optional desktop shortcut.
+    # Selecting it also proves the shortcut uses the installed executable and the
+    # Flux Launcher icon rather than the generic Windows default.
+    if ($desktopShortcutExistsBefore) {
+        # 该步骤会覆盖并随后删除同名桌面快捷方式。机器上原本存在的快捷方式在
+        # finally 中恢复，避免本地运行时破坏开发者自己的桌面状态。
+        Copy-Item -LiteralPath (Get-DesktopShortcutPath) -Destination $desktopShortcutBackup -Force
+    }
+    Invoke-SilentInstall `
+        -InstallRoot $desktopInstallRoot `
+        -LogPath $desktopLogPath `
+        -AdditionalArguments @("/TASKS=desktopicon")
+    $desktopInstalledExe = Get-InstalledExecutable -InstallRoot $desktopInstallRoot
+    Assert-InstalledHash -InstalledExe $desktopInstalledExe
+    Assert-EmbeddedExecutableIcon -Executable $desktopInstalledExe
+    $desktopShortcutPath = Assert-DesktopShortcut -InstalledExe $desktopInstalledExe -Expected $true
+    $desktopStartMenuShortcutPath = Assert-StartMenuShortcutIcon -InstalledExe $desktopInstalledExe
+    Invoke-SilentUninstall `
+        -InstallRoot $desktopInstallRoot `
+        -ShortcutPath $desktopStartMenuShortcutPath `
+        -UserDataRoot $userDataRoot
+    Wait-PathGone -Path $desktopShortcutPath -Description "Desktop shortcut"
+
+    Write-Host "Installer smoke passed: default startup enabled, startup opt-out, hidden --startup mode, hash validation, embedded exe icon for manually created shortcuts, optional desktop shortcut creation and removal, live-process shutdown before uninstall deletion, full install-root cleanup, Start Menu cleanup, user-data cleanup, and uninstall cleanup."
 }
 finally {
+    if ($desktopShortcutExistsBefore -and (Test-Path $desktopShortcutBackup)) {
+        Copy-Item -LiteralPath $desktopShortcutBackup -Destination (Get-DesktopShortcutPath) -Force
+        Write-Host "Restored the desktop shortcut that existed before the smoke run."
+    }
     if ($null -eq $originalStartupCommand -or $originalStartupCommand -eq "") {
         Remove-ItemProperty -Path $runKey -Name $runValueName -ErrorAction SilentlyContinue
     }
