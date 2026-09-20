@@ -256,11 +256,16 @@ Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSetting
 gh workflow run windows-release.yml \
   --repo lvxingqi/flux-launcher-cn \
   --ref main \
-  -f release_tag=vX.Y.Z \
+  -f release_tag=vX.Y.Z-beta.N \
   -f runner_label=windows-latest \
-  -f release_channel=beta
+  -f release_channel=beta \
+  -f publish_release=false
 ```
-`release_tag` 必须对应本次实际构建版本，且不得复用已有 release tag。
+`release_tag` 必须对应本次实际构建版本（与 Cargo 版本逐字一致），且不得复用已有 release tag。
+
+`publish_release` 默认 false：验证运行只构建、执行完整 smoke 与 UI 捕获并上传产物，不创建 Release；只有确实要发布时才传 `publish_release=true`，并同时提供人工校对的 `release_notes`，否则 workflow 在创建 Release 前失败（见第 19 节）。
+
+该 workflow 起始即校验同 HEAD 的 `ci.yml` 成功记录：CI 缺失、未完成或未成功时立即失败，因此发布前必须先让同 HEAD CI 全绿（见第 15 节），发布 workflow 自身不再重复执行全量测试。
 
 工作流成功前，不得发布或报告 beta 已完成。
 
@@ -305,7 +310,7 @@ gh workflow run windows-release.yml \
 ## 19. Beta 发布
 
 * 每次产品修复完成后准备一次**手工 beta 发布**。
-* Beta 必须通过 `Windows 发布` workflow 的 `release_channel=beta` 生成；发布必须 `prerelease: true`，名称不得包含 `(beta)`。
+* Beta 发布必须通过 `Windows 发布` workflow 的 `release_channel=beta` 生成，且 `prerelease: true`，Release 名称不得包含 `(beta)` 后缀（名称取 tag 本身）；稳定版走同一 workflow 的 `release_channel=stable`，`prerelease: false`。
 * 禁止空、重复或无说明发布，也不得由 push、定时任务或内部提交自动创建。
 * 发布版本、通道和说明必须由 Agent 主动选择并核对。
 * 发布前确认版本、`Cargo.lock`、安装器版本、tag、产物元数据一致，且安装程序与便携版资产均存在。
@@ -316,7 +321,7 @@ gh workflow run windows-release.yml \
 
 ## 20. 稳定发布与 WinGet
 
-* 稳定发布必须通过明确的用户指令，并手动运行 `Windows UI 发布` workflow 的 `release_channel=stable`。
+* 稳定发布必须通过明确的用户指令，并手动运行 `Windows 发布` workflow 的 `release_channel=stable`（beta 与稳定版共用该 workflow，由 `release_channel` 区分）。
 * WinGet 仅提交稳定版本，包标识符为 `lvxingqi.FluxLauncherCN`，路径为 `manifests/l/lvxingqi/FluxLauncherCN/<version>/`。
 * 提交前根据实际安装程序核实 URL、SHA256、schema、安装器元数据及“应用与功能”名称。
 * Beta 不得进入 WinGet；WinGet 自动化不得创建 GitHub Release，且仅在明确启用稳定版策略后才能准备或提交稳定版 PR。
@@ -419,6 +424,7 @@ gh workflow run windows-release.yml \
 * 嵌入 workflow 的 PowerShell 片段受第 15 节 PowerShell 检查约束。
 * 新增 workflow 输入须同步默认值、调用方与文档；不得留下只在 CI 中可用而无法本地复现的开关。
 * CI 目标平台即为本地检查目标平台，二者必须一致，不得要求本地执行 CI 无法执行的检查。
+* workflow 的运行时长必须可控：能用缓存消除的冷编译必须用缓存（如 `Swatinem/rust-cache`，缓存 key 与其它 workflow 区分），不得重复执行同 HEAD 已由其它 workflow 完成的全量检查；确需同 HEAD 验证结论时改为校验该 workflow 的成功记录，而不是重跑。发布类 workflow 成功运行超过 15 分钟须在计划回写中说明原因或给出优化（发现方式：Actions 运行列表直接显示每次 run 的时长）。
 * workflow 引用的 secrets / vars 名称必须维持在允许清单内，并由 `scripts/validate-workflow-secret-references.ps1` 在 CI 校验；新增、改名或删除密钥时必须同步该脚本的清单与第 20 节。
 * 编辑器提示 “Context access might be invalid: NAME” 属预期：本仓库按需配置密钥，workflow 在运行时自行守卫（无提交凭据时 fail-fast、签名仅限稳定通道），因此不得为了消除提示而创建空密钥或伪造变量。
 

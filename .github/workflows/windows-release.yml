@@ -36,7 +36,9 @@ on:
         type: string
 
 permissions:
+  # contents: write 用于创建或更新 Release；actions: read 用于校验同 HEAD 的 CI 结果。
   contents: write
+  actions: read
 
 concurrency:
   group: windows-release-${{ inputs.release_tag }}
@@ -52,10 +54,56 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 校验同 HEAD 的 CI 结果
+        shell: pwsh
+        env:
+          # 该步骤用 GITHUB_TOKEN 读取 Actions 运行记录，仓库授予 actions: read。
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          # 发布 workflow 不再重复执行与 CI 相同的全量测试，改为把「同 HEAD CI 成功」
+          # 校验成事实：缺少成功记录时立即失败，避免在未验证的提交上构建发布产物。
+          $json = gh run list `
+            --repo $env:GH_REPO `
+            --workflow ci.yml `
+            --commit $env:TARGET_SHA `
+            --limit 20 `
+            --json status,conclusion
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh run list 退出码 $LASTEXITCODE；无法校验 HEAD $env:TARGET_SHA 的 CI 结果。"
+          }
+
+          $runs = @($json | ConvertFrom-Json)
+
+          if ($runs.Count -eq 0) {
+            throw "未找到 HEAD $env:TARGET_SHA 的 CI 运行记录；请先推送并等待 CI 完成后再发布。"
+          }
+
+          $pending = @($runs | Where-Object { $_.status -ne 'completed' })
+          if ($pending.Count -gt 0) {
+            throw "HEAD $env:TARGET_SHA 的 CI 尚未完成（status=$($pending[0].status)）；等待 CI 结束后重试。"
+          }
+
+          $success = @($runs | Where-Object { $_.conclusion -eq 'success' })
+          if ($success.Count -eq 0) {
+            $conclusions = ($runs | ForEach-Object { $_.conclusion }) -join ', '
+            throw "HEAD $env:TARGET_SHA 的 CI 未成功（conclusion=$conclusions）；修复 CI 后再发布。"
+          }
+
+          Write-Host "同 HEAD CI 校验通过：$env:TARGET_SHA（成功记录 $($success.Count) 条）"
+
       - name: 安装稳定版 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          # 显式区分发布缓存与 CI 缓存，避免两类运行互相挤占缓存条目。
+          key: windows-release
 
       - name: 读取并校验应用版本
         shell: pwsh
@@ -155,15 +203,6 @@ jobs:
           ./scripts/native-plugin-pipe-smoke.ps1 `
             -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
             -PluginRoot $nativeRoot
-
-      - name: 运行 Windows 更新与设置回归测试
-        shell: pwsh
-        run: |
-          cargo test `
-            -p flux-launcher `
-            -p flux-core `
-            --target x86_64-pc-windows-msvc `
-            --all-targets
 
       - name: 验证快捷方式图标
         shell: pwsh
