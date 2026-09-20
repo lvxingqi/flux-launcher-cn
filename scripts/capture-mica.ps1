@@ -2624,7 +2624,8 @@ try {
         }
         $settingsContractLog = if (Test-Path $settingsStderrPath) { Get-Content $settingsStderrPath -Raw } else { "" }
         if ($VisualSettingsSmoke) {
-            $settingsUiProbe = $settingsContractLog -match "Settings UI contract: UpdateActionVersionLabel=Current version: \d+\.\d+\.\d+; SmoothCaretTab=Visual; SmoothCaretGeneral=false"
+            # 版本可能携带 SemVer 预发布标识（如 0.2.0-beta.1），正则需接受可选后缀。
+            $settingsUiProbe = $settingsContractLog -match "Settings UI contract: UpdateActionVersionLabel=Current version: \d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?; SmoothCaretTab=Visual; SmoothCaretGeneral=false"
             if (!$settingsUiProbe) {
                 throw "Visual Settings smoke did not observe the expected Update version/Smooth Caret tab contract."
             }
