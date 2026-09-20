@@ -17,33 +17,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
+  # 文本类检查不依赖 Rust 工具链，独立成 job 与编译并行：
+  # PSScriptAnalyzer 安装与各校验脚本原本串行占用关键路径，拆分后不再等待编译。
+  checks:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装稳定版 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
-
-      - name: 检查格式
-        shell: pwsh
-        run: cargo fmt --all -- --check
-
       - name: 检查 diff
         shell: pwsh
         run: git diff --check
+
+      - name: 解析 PSScriptAnalyzer 最新版本
+        id: pssa
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          $version = (Find-Module PSScriptAnalyzer -ErrorAction Stop).Version.ToString()
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "PSScriptAnalyzer 最新版本：$version"
+
+      - name: 缓存 PSScriptAnalyzer 模块
+        uses: actions/cache@v4
+        with:
+          # 以 PSGallery 上的最新版本号作为 key：版本升级后 key 变化，自动重新安装。
+          path: ~/Documents/PowerShell/Modules
+          key: pssa-${{ runner.os }}-${{ steps.pssa.outputs.version }}
 
       - name: 验证 PowerShell 脚本
         shell: pwsh
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          # 命中缓存时模块已存在，跳过安装以免每次都从 PSGallery 拉取。
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
           $findings = Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 -Severity Warning,Error
           if ($findings) {
             $findings | ForEach-Object { Write-Host "$($_.RuleName) $($_.Severity) $($_.ScriptName):$($_.Line) $($_.Message)" }
@@ -71,6 +82,32 @@ jobs:
       - name: 校验 workflow 输入插值
         shell: pwsh
         run: ./scripts/validate-workflow-input-interpolation.ps1 -WorkflowDirectory .github/workflows
+
+  # 编译与运行类检查保留在单个 job 内串行执行：clippy / test / release 构建共享同一
+  # Cargo 缓存，拆成多个 job 会让三者各自冷启动并争抢缓存条目。检查项与第 15 节一一对应。
+  rust:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装稳定版 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          # 与发布 workflow 的缓存（key: windows-release）区分，避免相互挤占。
+          key: ci
+
+      - name: 检查格式
+        shell: pwsh
+        run: cargo fmt --all -- --check
 
       - name: 运行 Clippy
         shell: pwsh

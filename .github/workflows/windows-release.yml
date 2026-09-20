@@ -147,18 +147,33 @@ jobs:
           "APP_INSTALLER_VERSION=$installerVersion" >> $env:GITHUB_ENV
           Write-Host "应用版本：$cargoVersion"
 
-      - name: 安装 Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress --yes
-
-      - name: 构建发布版本
+      - name: 构建发布版本（并行安装 Inno Setup）
         shell: pwsh
         run: |
+          # Inno Setup 安装与 Release 编译互不依赖，且 scripts/build-installer.ps1 通过显式
+          # 路径查找 ISCC.exe（不依赖 PATH），因此后台安装、编译结束后再等待结果，
+          # 把 choco 安装时间移出关键路径；安装失败仍会使本步骤失败。
+          $innoJob = Start-Job -ScriptBlock {
+            $output = choco install innosetup --no-progress --yes 2>&1
+            [pscustomobject]@{
+              ExitCode = $LASTEXITCODE
+              Output   = $output
+            }
+          }
+
           cargo build --release `
             --target x86_64-pc-windows-msvc `
             -p flux-launcher `
             -p flow-plugin-fixture `
             -p flux-plugin-example
+
+          $innoResult = Receive-Job -Job $innoJob -Wait
+          $innoState = $innoJob.State
+          Remove-Job -Job $innoJob
+          $innoResult.Output | ForEach-Object { Write-Host $_ }
+          if ($innoState -ne 'Completed' -or $innoResult.ExitCode -ne 0) {
+            throw "Inno Setup 安装失败（job state=$innoState，choco exit=$($innoResult.ExitCode)）。"
+          }
 
           $pluginRoot = Join-Path $env:APPDATA "FluxLauncher\Plugins\NativeFlowFixture"
 
