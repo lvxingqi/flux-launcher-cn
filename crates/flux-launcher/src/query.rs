@@ -179,7 +179,7 @@ pub(crate) fn commit_provider_results(
                 .unwrap_or_default(),
         );
     }
-    inline_completion.set(crate::inline_completion_suffix(query, &merged));
+    inline_completion.set(crate::ui_helpers::inline_completion_suffix(query, &merged));
     results.set(merged);
 }
 

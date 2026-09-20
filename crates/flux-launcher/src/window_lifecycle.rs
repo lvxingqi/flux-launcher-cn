@@ -5,9 +5,9 @@ use flux_core::{SearchResult, Settings};
 use windui::app::{CursorVisibilityHandle, WindowSizeHandle};
 use windui::prelude::{Color, Signal};
 
+use crate::accent::selection_color_for_settings;
 use crate::actions::ActionItem;
 use crate::keyboard_layout;
-use crate::selection_color_for_settings;
 use crate::window_state::launcher_window_geometry_with_sizes;
 
 pub(crate) fn on_window_show(

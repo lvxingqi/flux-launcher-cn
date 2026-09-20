@@ -4,7 +4,8 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use crate::actions::{execute_result_action, selected_result, ActionItem, ActionKind};
-use flux_core::{PriorityEntry, SearchResult, Settings};
+use crate::LAUNCHER_FONT_FAMILY;
+use flux_core::{PriorityEntry, ResultKind, SearchResult, Settings};
 
 use crate::query::{refresh_merged_results, ProviderResults};
 use crate::result_row::ActionRowAnchor;
@@ -278,4 +279,151 @@ pub(crate) fn action_row(
                 );
             }
         })
+}
+
+pub(crate) fn game_mode_label(enabled: bool) -> String {
+    if enabled {
+        String::from("Game Mode: On")
+    } else {
+        String::from("Game Mode: Off")
+    }
+}
+
+pub(crate) fn display_title(title: &str) -> String {
+    const MAX_TITLE_CHARS: usize = 26;
+    let chars: Vec<char> = title.chars().collect();
+    if chars.len() <= MAX_TITLE_CHARS {
+        return title.to_owned();
+    }
+
+    let extension_start = title
+        .char_indices()
+        .rev()
+        .find_map(|(index, character)| (character == '.' && index > 0).then_some(index));
+    let (stem, extension) = extension_start
+        .map(|index| title.split_at(index))
+        .unwrap_or((title, ""));
+    let extension_chars: Vec<char> = extension.chars().collect();
+    let available_stem_chars = MAX_TITLE_CHARS
+        .saturating_sub(extension_chars.len())
+        .saturating_sub(1);
+    if available_stem_chars < 2 {
+        return chars
+            .into_iter()
+            .take(MAX_TITLE_CHARS.saturating_sub(1))
+            .chain(std::iter::once('…'))
+            .collect();
+    }
+
+    let stem_chars: Vec<char> = stem.chars().collect();
+    let prefix_len = available_stem_chars.div_ceil(2);
+    let suffix_len = available_stem_chars / 2;
+    stem_chars
+        .iter()
+        .take(prefix_len)
+        .chain(std::iter::once(&'…'))
+        .chain(
+            stem_chars
+                .iter()
+                .skip(stem_chars.len().saturating_sub(suffix_len)),
+        )
+        .copied()
+        .chain(extension_chars)
+        .collect()
+}
+
+pub(crate) fn title_match_doc(title: &str, query: &str) -> RichDoc {
+    // Follow the Windows 11 type hierarchy: regular body text, with stronger
+    // weight reserved for the characters matched by the current query.
+    let normal = SpanStyle::new()
+        .family(LAUNCHER_FONT_FAMILY)
+        .weight(400)
+        .fg(Color::rgba(255, 255, 255, 255));
+    let matched = SpanStyle::new()
+        .family(LAUNCHER_FONT_FAMILY)
+        .weight(650)
+        .fg(Color::rgba(255, 255, 255, 255));
+    let mut para = Para::new();
+
+    let query_chars: Vec<char> = query
+        .trim()
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect();
+    let display_title = display_title(title);
+    let title_chars: Vec<char> = display_title.chars().collect();
+    let mut matched_flags = vec![false; title_chars.len()];
+    let mut query_index = 0;
+    for (index, character) in title_chars.iter().enumerate() {
+        if query_index < query_chars.len()
+            && character
+                .to_lowercase()
+                .eq(query_chars[query_index].to_lowercase())
+        {
+            matched_flags[index] = true;
+            query_index += 1;
+        }
+    }
+
+    let mut start = 0;
+    while start < title_chars.len() {
+        let is_match = matched_flags[start];
+        let mut end = start + 1;
+        while end < title_chars.len() && matched_flags[end] == is_match {
+            end += 1;
+        }
+        let text: String = title_chars[start..end].iter().collect();
+        para = para.span(
+            text,
+            if is_match {
+                matched.clone()
+            } else {
+                normal.clone()
+            },
+        );
+        start = end;
+    }
+    RichDoc::new().para(para)
+}
+
+pub(crate) fn inline_completion_suffix(query: &str, results: &[SearchResult]) -> String {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let query_lower = trimmed.to_lowercase();
+    let query_len = trimmed.chars().count();
+    results
+        .iter()
+        .filter(|result| matches!(result.kind, ResultKind::Application))
+        .find_map(|result| {
+            let title_lower = result.title.to_lowercase();
+            if !title_lower.starts_with(&query_lower) {
+                return None;
+            }
+            Some(result.title.chars().skip(query_len).collect())
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn launcher_theme() -> Theme {
+    let mut theme = Theme::dark();
+    theme.palette.bg = Color::rgba(0, 0, 0, 0);
+    theme.palette.surface = Color::rgba(38, 39, 41, 180);
+    theme.palette.surface_alt = Color::rgba(48, 49, 51, 205);
+    theme.palette.border = Color::rgba(255, 255, 255, 22);
+    // The Search control is transparent, so its foreground must stay readable
+    // over both dark and light Acrylic samples. Keep ordinary text neutral and
+    // opaque; reserve accent blue for selection/focus feedback only.
+    theme.palette.text = Color::rgba(250, 252, 255, 255);
+    theme.palette.placeholder = Color::rgba(238, 243, 255, 230);
+    theme.input.bg = Some(Color::rgba(29, 30, 32, 188));
+    theme.input.border = Some(Color::rgba(255, 255, 255, 24));
+    theme.input.border_focus = Some(Color::rgba(133, 181, 255, 135));
+    theme.input.text = Some(Color::rgba(250, 252, 255, 255));
+    theme.input.placeholder = Some(Color::rgba(238, 243, 255, 230));
+    theme.input.selection = Some(Color::rgba(76, 139, 245, 150));
+    theme.input.cursor = Some(Color::rgba(255, 255, 255, 255));
+    theme
 }

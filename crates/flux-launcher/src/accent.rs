@@ -1,3 +1,6 @@
+use flux_core::Settings;
+use windui::prelude::*;
+
 #[cfg(windows)]
 use windows::core::{w, PCWSTR};
 #[cfg(windows)]
@@ -49,4 +52,29 @@ pub fn system_accent_rgb() -> Option<(u8, u8, u8)> {
 #[cfg(not(windows))]
 pub fn system_accent_rgb() -> Option<(u8, u8, u8)> {
     None
+}
+
+fn custom_selection_color_rgb(value: u32) -> (u8, u8, u8) {
+    (
+        ((value >> 16) & 0xff) as u8,
+        ((value >> 8) & 0xff) as u8,
+        (value & 0xff) as u8,
+    )
+}
+
+pub(crate) fn selection_color_for_settings(settings: &Settings) -> Color {
+    let (r, g, b) = if settings.use_system_accent {
+        system_accent_rgb()
+            .unwrap_or_else(|| custom_selection_color_rgb(settings.custom_selection_color))
+    } else {
+        custom_selection_color_rgb(settings.custom_selection_color)
+    };
+    Color::rgba(r, g, b, 84)
+}
+
+pub(crate) fn parse_selection_color(value: &str) -> Option<u32> {
+    let trimmed = value.trim().trim_start_matches('#');
+    (trimmed.len() == 6)
+        .then(|| u32::from_str_radix(trimmed, 16).ok())
+        .flatten()
 }

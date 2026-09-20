@@ -121,7 +121,7 @@ fn register_everything_channel(
             return;
         }
         if response.sequence != current_sequence.get()
-            || response.query != crate::normalize_everything_query(&query.get())
+            || response.query != crate::everything::normalize_everything_query(&query.get())
         {
             return;
         }

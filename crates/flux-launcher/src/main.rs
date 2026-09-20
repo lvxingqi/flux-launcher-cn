@@ -42,22 +42,21 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
-#[cfg(windows)]
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 
 use crate::icons::{
     icon_completion_generation_changed, prewarm_icon_targets, request_shell_icon, tray_icon,
     SHELL_ICON_COMPLETION_GENERATION,
 };
 use crate::launch::trace_launch_event;
+use accent::{parse_selection_color, selection_color_for_settings};
 use actions::ActionItem;
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
-use everything::EverythingRuntimeState;
+use everything::{refresh_everything_status_cheap, EverythingRuntimeState};
 use flux_core::{
-    should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
-    SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT,
-    MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
+    should_suppress_activation, HotkeyConfig, MonitorPreference, SearchModel,
+    DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH,
+    MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
@@ -67,9 +66,10 @@ use interval_state::dispatch_query;
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
 use keyboard::{
-    cycle_query_history, handle_action_entry, handle_action_mode, handle_copy_shortcut,
-    handle_enter_key, handle_open_location_shortcut, handle_result_navigation,
-    handle_run_as_admin_shortcut, open_history_mode, ActionKeyContext, EnterKeyContext,
+    alt_key_is_down, cycle_query_history, handle_action_entry, handle_action_mode,
+    handle_copy_shortcut, handle_enter_key, handle_open_location_shortcut,
+    handle_result_navigation, handle_run_as_admin_shortcut, is_run_as_admin_key, open_history_mode,
+    shift_key_is_down, ActionKeyContext, EnterKeyContext,
 };
 use provider_state::{register_provider_channels, ProviderChannelContext, ProviderWorkers};
 #[cfg(test)]
@@ -77,7 +77,10 @@ pub(crate) use query::should_publish_initial_query_results;
 use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
-use ui_helpers::{action_bar_content, priorities_empty, selection_color_hex, selection_palette};
+use ui_helpers::{
+    action_bar_content, game_mode_label, launcher_theme, priorities_empty, selection_color_hex,
+    selection_palette,
+};
 use update_state::{
     maybe_request_update_check, register_update_channels, request_update_check,
     request_update_install, update_check_due,
@@ -124,253 +127,6 @@ const LAUNCHER_FONT_FAMILY: &str = "Segoe UI Variable";
 const SEARCH_INTERVAL: Duration = Duration::from_millis(40);
 const EVERYTHING_MIN_QUERY_LEN: usize = 1;
 const PLUGIN_MIN_QUERY_LEN: usize = 2;
-
-fn is_run_as_admin_key(event: &KeyEvent) -> bool {
-    event.ctrl
-        && matches!(
-            event.key,
-            Key::Other(0x52) | Key::Char('r') | Key::Char('R')
-        )
-}
-
-#[cfg(windows)]
-fn shift_key_is_down() -> bool {
-    unsafe { (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 }
-}
-
-#[cfg(not(windows))]
-fn shift_key_is_down() -> bool {
-    false
-}
-
-fn game_mode_label(enabled: bool) -> String {
-    if enabled {
-        String::from("Game Mode: On")
-    } else {
-        String::from("Game Mode: Off")
-    }
-}
-
-fn custom_selection_color_rgb(value: u32) -> (u8, u8, u8) {
-    (
-        ((value >> 16) & 0xff) as u8,
-        ((value >> 8) & 0xff) as u8,
-        (value & 0xff) as u8,
-    )
-}
-
-pub(crate) fn selection_color_for_settings(settings: &Settings) -> Color {
-    let (r, g, b) = if settings.use_system_accent {
-        accent::system_accent_rgb()
-            .unwrap_or_else(|| custom_selection_color_rgb(settings.custom_selection_color))
-    } else {
-        custom_selection_color_rgb(settings.custom_selection_color)
-    };
-    Color::rgba(r, g, b, 84)
-}
-
-fn parse_selection_color(value: &str) -> Option<u32> {
-    let trimmed = value.trim().trim_start_matches('#');
-    (trimmed.len() == 6)
-        .then(|| u32::from_str_radix(trimmed, 16).ok())
-        .flatten()
-}
-
-fn display_title(title: &str) -> String {
-    const MAX_TITLE_CHARS: usize = 26;
-    let chars: Vec<char> = title.chars().collect();
-    if chars.len() <= MAX_TITLE_CHARS {
-        return title.to_owned();
-    }
-
-    let extension_start = title
-        .char_indices()
-        .rev()
-        .find_map(|(index, character)| (character == '.' && index > 0).then_some(index));
-    let (stem, extension) = extension_start
-        .map(|index| title.split_at(index))
-        .unwrap_or((title, ""));
-    let extension_chars: Vec<char> = extension.chars().collect();
-    let available_stem_chars = MAX_TITLE_CHARS
-        .saturating_sub(extension_chars.len())
-        .saturating_sub(1);
-    if available_stem_chars < 2 {
-        return chars
-            .into_iter()
-            .take(MAX_TITLE_CHARS.saturating_sub(1))
-            .chain(std::iter::once('…'))
-            .collect();
-    }
-
-    let stem_chars: Vec<char> = stem.chars().collect();
-    let prefix_len = available_stem_chars.div_ceil(2);
-    let suffix_len = available_stem_chars / 2;
-    stem_chars
-        .iter()
-        .take(prefix_len)
-        .chain(std::iter::once(&'…'))
-        .chain(
-            stem_chars
-                .iter()
-                .skip(stem_chars.len().saturating_sub(suffix_len)),
-        )
-        .copied()
-        .chain(extension_chars)
-        .collect()
-}
-
-fn title_match_doc(title: &str, query: &str) -> RichDoc {
-    // Follow the Windows 11 type hierarchy: regular body text, with stronger
-    // weight reserved for the characters matched by the current query.
-    let normal = SpanStyle::new()
-        .family(LAUNCHER_FONT_FAMILY)
-        .weight(400)
-        .fg(Color::rgba(255, 255, 255, 255));
-    let matched = SpanStyle::new()
-        .family(LAUNCHER_FONT_FAMILY)
-        .weight(650)
-        .fg(Color::rgba(255, 255, 255, 255));
-    let mut para = Para::new();
-
-    let query_chars: Vec<char> = query
-        .trim()
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect();
-    let display_title = display_title(title);
-    let title_chars: Vec<char> = display_title.chars().collect();
-    let mut matched_flags = vec![false; title_chars.len()];
-    let mut query_index = 0;
-    for (index, character) in title_chars.iter().enumerate() {
-        if query_index < query_chars.len()
-            && character
-                .to_lowercase()
-                .eq(query_chars[query_index].to_lowercase())
-        {
-            matched_flags[index] = true;
-            query_index += 1;
-        }
-    }
-
-    let mut start = 0;
-    while start < title_chars.len() {
-        let is_match = matched_flags[start];
-        let mut end = start + 1;
-        while end < title_chars.len() && matched_flags[end] == is_match {
-            end += 1;
-        }
-        let text: String = title_chars[start..end].iter().collect();
-        para = para.span(
-            text,
-            if is_match {
-                matched.clone()
-            } else {
-                normal.clone()
-            },
-        );
-        start = end;
-    }
-    RichDoc::new().para(para)
-}
-
-/// 低成本刷新 Everything 状态文本：注册表读取（约 0ms）+ IPC 探测（约 3-5ms），
-/// 不枚举进程、也不拉起 Everything，可安全用于窗口激活与设置保存等 UI 线程路径。
-///
-/// 目的：状态文案反映真实可用性——用户在外部退出 Everything 后，这里会立即
-/// 把状态改成「已安装但 IPC 不可用」，而不是保留启动时的陈旧结论。
-fn refresh_everything_status_cheap(
-    auto_enable: Signal<bool>,
-    installed: Signal<bool>,
-    status: Signal<String>,
-) {
-    if !auto_enable.get() {
-        status.set(t!("everything.auto_enable_disabled").into_owned());
-        return;
-    }
-    let outcome = everything::refresh_state_cheap();
-    installed.set(outcome.is_installed());
-    status.set(outcome.status_message());
-}
-
-fn normalize_everything_query(query: &str) -> String {
-    let trimmed = query.trim();
-    let Some(rest) = trimmed.strip_prefix('.') else {
-        return trimmed.to_owned();
-    };
-    let (extension, remainder) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-    if extension.is_empty()
-        || !extension
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
-    {
-        return trimmed.to_owned();
-    }
-    let remainder = remainder.trim();
-    if remainder.is_empty() {
-        format!("ext:{extension}")
-    } else {
-        format!("ext:{extension} {remainder}")
-    }
-}
-
-fn inline_completion_suffix(query: &str, results: &[SearchResult]) -> String {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let query_lower = trimmed.to_lowercase();
-    let query_len = trimmed.chars().count();
-    results
-        .iter()
-        .filter(|result| matches!(result.kind, ResultKind::Application))
-        .find_map(|result| {
-            let title_lower = result.title.to_lowercase();
-            if !title_lower.starts_with(&query_lower) {
-                return None;
-            }
-            Some(result.title.chars().skip(query_len).collect())
-        })
-        .unwrap_or_default()
-}
-
-#[cfg(windows)]
-fn alt_key_is_down() -> bool {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_MENU};
-    unsafe { GetKeyState(VK_MENU.0 as i32) < 0 }
-}
-
-#[cfg(not(windows))]
-fn alt_key_is_down() -> bool {
-    false
-}
-
-fn relaunch_mode_for_auto_install() -> updater::RelaunchMode {
-    // Automatic updates must remain invisible: a restart should return to the
-    // tray and never reopen Search. Manual Install now uses Visible explicitly.
-    updater::RelaunchMode::Hidden
-}
-
-fn launcher_theme() -> Theme {
-    let mut theme = Theme::dark();
-    theme.palette.bg = Color::rgba(0, 0, 0, 0);
-    theme.palette.surface = Color::rgba(38, 39, 41, 180);
-    theme.palette.surface_alt = Color::rgba(48, 49, 51, 205);
-    theme.palette.border = Color::rgba(255, 255, 255, 22);
-    // The Search control is transparent, so its foreground must stay readable
-    // over both dark and light Acrylic samples. Keep ordinary text neutral and
-    // opaque; reserve accent blue for selection/focus feedback only.
-    theme.palette.text = Color::rgba(250, 252, 255, 255);
-    theme.palette.placeholder = Color::rgba(238, 243, 255, 230);
-    theme.input.bg = Some(Color::rgba(29, 30, 32, 188));
-    theme.input.border = Some(Color::rgba(255, 255, 255, 24));
-    theme.input.border_focus = Some(Color::rgba(133, 181, 255, 135));
-    theme.input.text = Some(Color::rgba(250, 252, 255, 255));
-    theme.input.placeholder = Some(Color::rgba(238, 243, 255, 230));
-    theme.input.selection = Some(Color::rgba(76, 139, 245, 150));
-    theme.input.cursor = Some(Color::rgba(255, 255, 255, 255));
-    theme
-}
 
 #[derive(Default)]
 struct ActionBarGeometryProbe {

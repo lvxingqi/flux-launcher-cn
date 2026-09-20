@@ -37,7 +37,9 @@ impl LauncherSettingsState {
             priorities: windui::prelude::signal(settings.priority_entries.clone()),
             i18n_hub: I18nHub::new(),
             game_mode: windui::prelude::signal(settings.game_mode),
-            game_mode_status: windui::prelude::signal(crate::game_mode_label(settings.game_mode)),
+            game_mode_status: windui::prelude::signal(crate::ui_helpers::game_mode_label(
+                settings.game_mode,
+            )),
             settings_ui,
             language_preference: windui::prelude::signal(crate::i18n::language_preference_index(
                 settings.language,
@@ -170,7 +172,7 @@ pub(crate) fn set_game_mode(
     if let Ok(mut settings) = settings.write() {
         settings.game_mode = enabled;
         game_mode.set(enabled);
-        status.set(crate::game_mode_label(enabled));
+        status.set(crate::ui_helpers::game_mode_label(enabled));
         let _ = save_settings(&settings);
     }
 }

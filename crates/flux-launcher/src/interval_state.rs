@@ -88,7 +88,10 @@ pub(crate) fn dispatch_query(
     ));
     application_worker.request(current_sequence, query.to_owned());
     if auto_enable_everything.get() && query.trim().len() >= crate::EVERYTHING_MIN_QUERY_LEN {
-        everything_worker.request(current_sequence, crate::normalize_everything_query(query));
+        everything_worker.request(
+            current_sequence,
+            crate::everything::normalize_everything_query(query),
+        );
     }
     if query.trim().len() >= crate::PLUGIN_MIN_QUERY_LEN {
         plugin_worker.request(

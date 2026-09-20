@@ -11,9 +11,9 @@ use crate::icons::{
 use crate::launch;
 use crate::plugins::{self, PluginAction};
 use crate::settings_state::record_query_history;
+use crate::ui_helpers::title_match_doc;
 use crate::{
-    title_match_doc, ACTION_WINDOW_HEIGHT, LAUNCHER_FONT_FAMILY, SETTINGS_WINDOW_HEIGHT,
-    SETTINGS_WINDOW_WIDTH,
+    ACTION_WINDOW_HEIGHT, LAUNCHER_FONT_FAMILY, SETTINGS_WINDOW_HEIGHT, SETTINGS_WINDOW_WIDTH,
 };
 use flux_core::{SearchResult, Settings};
 use windui::app::WindowSizeHandle;

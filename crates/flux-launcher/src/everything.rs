@@ -20,6 +20,47 @@ use flux_core::{ResultKind, SearchResult};
 use crate::applications::canonical_application_id;
 use windui::prelude::{signal, Sender, Signal};
 
+/// 低成本刷新 Everything 状态文本：注册表读取（约 0ms）+ IPC 探测（约 3-5ms），
+/// 不枚举进程、也不拉起 Everything，可安全用于窗口激活与设置保存等 UI 线程路径。
+///
+/// 目的：状态文案反映真实可用性——用户在外部退出 Everything 后，这里会立即
+/// 把状态改成「已安装但 IPC 不可用」，而不是保留启动时的陈旧结论。
+pub(crate) fn refresh_everything_status_cheap(
+    auto_enable: Signal<bool>,
+    installed: Signal<bool>,
+    status: Signal<String>,
+) {
+    if !auto_enable.get() {
+        status.set(t!("everything.auto_enable_disabled").into_owned());
+        return;
+    }
+    let outcome = refresh_state_cheap();
+    installed.set(outcome.is_installed());
+    status.set(outcome.status_message());
+}
+
+/// 把 `.ext query` 形式的查询规范化为 Everything 的 `ext:` 原生语法。
+pub(crate) fn normalize_everything_query(query: &str) -> String {
+    let trimmed = query.trim();
+    let Some(rest) = trimmed.strip_prefix('.') else {
+        return trimmed.to_owned();
+    };
+    let (extension, remainder) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    if extension.is_empty()
+        || !extension
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return trimmed.to_owned();
+    }
+    let remainder = remainder.trim();
+    if remainder.is_empty() {
+        format!("ext:{extension}")
+    } else {
+        format!("ext:{extension} {remainder}")
+    }
+}
+
 const MAX_RESULTS: u32 = 16;
 const QUERY_TIMEOUT: Duration = Duration::from_millis(350);
 pub const WINGET_PACKAGE_ID: &str = "voidtools.Everything";

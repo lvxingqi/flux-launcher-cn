@@ -1,25 +1,29 @@
 use super::{
-    dimension_from_slider, dimension_slider_fraction, display_title, history_cursor_step,
-    is_run_as_admin_key, launcher_window_geometry_with_sizes, normalize_everything_query,
-    parse_dimension_input, relaunch_mode_for_auto_install, should_publish_initial_query_results,
-    should_show_launcher, COMPACT_WINDOW_HEIGHT, LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT,
-    MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
+    dimension_from_slider, dimension_slider_fraction, history_cursor_step,
+    launcher_window_geometry_with_sizes, parse_dimension_input,
+    should_publish_initial_query_results, should_show_launcher, COMPACT_WINDOW_HEIGHT,
+    LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT,
+    MIN_LAUNCHER_WIDTH,
 };
 use crate::actions::{actions_for_result, quoted_result_path};
 use crate::applications::{canonical_application_id, resolve_bare_executable_path};
 use crate::entry::{is_shutdown_mode, should_claim_single_instance};
+use crate::everything::normalize_everything_query;
 use crate::icons::{
     bundled_icon_rgba, google_icon_rgba, icon_completion_generation_changed,
     icon_row_within_eager_window, icon_target_for_path, is_executable_icon_target,
     obsidian_icon_rgba, parse_internet_shortcut_icon_location, resolve_shortcut_icon_path,
     ResultIconView, ShellIconCache, MAX_SHELL_ICON_CACHE_ENTRIES,
 };
+use crate::keyboard::is_run_as_admin_key;
 use crate::query::{
     merge_application_duplicates, normalize_built_in_executable_targets,
     preserve_everything_file_order, synthesize_path_result, ProviderResults,
 };
 use crate::result_row::hover_position_changed;
+use crate::ui_helpers::display_title;
 use crate::update_state::{format_bytes, format_update_progress};
+use crate::updater::relaunch_mode_for_auto_install;
 use crate::window_state::{launcher_window_geometry, should_show_everything_install_prompt};
 use flux_core::{rank_results_with_priorities, ResultKind, ResultSource, SearchResult};
 use windui::event::{Key, KeyEvent};

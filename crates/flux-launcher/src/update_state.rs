@@ -65,7 +65,7 @@ pub(crate) fn register_update_channels(
                     .map(|settings| settings.auto_install_updates)
                     .unwrap_or(false);
                 if auto_install {
-                    let relaunch_mode = crate::relaunch_mode_for_auto_install();
+                    let relaunch_mode = crate::updater::relaunch_mode_for_auto_install();
                     update_installing.set(true);
                     update_status
                         .set(t!("updater.preparing", version = update.version).into_owned());

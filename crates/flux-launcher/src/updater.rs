@@ -34,6 +34,12 @@ pub enum RelaunchMode {
     Visible,
 }
 
+/// 自动更新重启必须保持不可见：重启后回到托盘，绝不重新打开 Search。
+/// 手动 Install 路径显式使用 Visible。
+pub(crate) fn relaunch_mode_for_auto_install() -> RelaunchMode {
+    RelaunchMode::Hidden
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DownloadProgress {
     pub received_bytes: u64,

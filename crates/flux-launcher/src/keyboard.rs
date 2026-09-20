@@ -14,7 +14,7 @@ use crate::query::{refresh_merged_results, ProviderResults};
 use crate::settings_state::{record_query_history, set_result_priority};
 use flux_core::{history_results, PriorityEntry, SearchResult, Settings};
 use windui::app::{WindowOpHandle, WindowSizeHandle};
-use windui::event::Key;
+use windui::event::{Key, KeyEvent};
 use windui::prelude::Signal;
 
 pub(crate) struct ActionKeyContext {
@@ -401,4 +401,34 @@ pub(crate) fn cycle_query_history(
     history_mode.set(false);
     query.set(history[next].clone());
     true
+}
+
+pub(crate) fn is_run_as_admin_key(event: &KeyEvent) -> bool {
+    event.ctrl
+        && matches!(
+            event.key,
+            Key::Other(0x52) | Key::Char('r') | Key::Char('R')
+        )
+}
+
+#[cfg(windows)]
+pub(crate) fn shift_key_is_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
+    unsafe { (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn shift_key_is_down() -> bool {
+    false
+}
+
+#[cfg(windows)]
+pub(crate) fn alt_key_is_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_MENU};
+    unsafe { GetKeyState(VK_MENU.0 as i32) < 0 }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn alt_key_is_down() -> bool {
+    false
 }
