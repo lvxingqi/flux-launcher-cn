@@ -1,5 +1,5 @@
 //! 临时帧调度诊断（`WINDUI_TRACE_FILE` 环境变量门控；诊断目的见
-//! flux-launcher 仓库 `doc/plan/u-key-lag-frame-scheduling-2026-09-18.md`）。
+//! flux-launcher 仓库 `doc/archive/plan/u-key-lag-frame-scheduling-2026-09-18.md`）。
 //!
 //! 行格式与 flux 的查询性能日志一致：`{unix_ms}\t{event}\t{detail}`。
 //! 未设置环境变量时仅一次原子读，零开销；写入端加进程内锁后整行单次写，

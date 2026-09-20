@@ -252,7 +252,7 @@ pub fn trace_query_profile(event: &str, detail: &str) {
 
 /// 诊断日志由 UI 线程与 shell 图标 worker 线程并发追加。行必须一次性写入，
 /// 否则格式化的多段 write 会互相交错，产生无法解析的坏行（见
-/// `doc/plan/u-key-lag-remediation-2026-09-18.md` 步骤 1）。
+/// `doc/archive/plan/u-key-lag-remediation-2026-09-18.md` 步骤 1）。
 static QUERY_PROFILE_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn write_query_profile_line(
