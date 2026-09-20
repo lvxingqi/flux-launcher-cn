@@ -28,15 +28,26 @@ pub(crate) fn on_window_show(
     }
 }
 
-pub(crate) fn on_window_activated(settings: Arc<RwLock<Settings>>) -> impl FnMut() + 'static {
+/// 窗口激活/显示时：按设置切换键盘布局，并刷新 Everything 的真实运行状态。
+///
+/// `refresh_everything_state` 必须是低成本操作（注册表 + IPC 探测，见
+/// `everything::refresh_state_cheap()`）；它不能枚举进程或拉起 Everything，
+/// 否则会把毫秒级回调变成数百毫秒阻塞。
+pub(crate) fn on_window_activated(
+    settings: Arc<RwLock<Settings>>,
+    mut refresh_everything_state: impl FnMut() + 'static,
+) -> impl FnMut() + 'static {
     move || {
         let layout_enabled = settings
             .read()
             .map(|settings| settings.switch_to_english_layout)
-            .unwrap_or(true);
+            .unwrap_or(false);
         if layout_enabled {
             keyboard_layout::switch_to_english();
         }
+        // 用户可能在两次激活之间退出（或启动）了 Everything；此处刷新状态，
+        // 避免设置页继续显示与事实不符的「IPC 可用」。
+        refresh_everything_state();
     }
 }
 
@@ -76,7 +87,7 @@ pub(crate) fn on_window_hide(
                     settings.clear_query_on_activation,
                 )
             })
-            .unwrap_or((true, clear_query_on_activation.get()));
+            .unwrap_or((false, clear_query_on_activation.get()));
         if enabled {
             keyboard_layout::restore_previous();
         }

@@ -116,8 +116,10 @@ pub struct Settings {
     pub game_mode: bool,
     #[serde(default = "enabled_by_default")]
     pub smooth_caret: bool,
-    #[serde(default = "enabled_by_default")]
+    #[serde(default = "disabled_by_default")]
     pub switch_to_english_layout: bool,
+    #[serde(default)]
+    pub keyboard_layout_default_migrated: bool,
     #[serde(default = "enabled_by_default")]
     pub use_system_accent: bool,
     #[serde(default = "default_selection_color")]
@@ -171,7 +173,8 @@ impl Default for Settings {
             ignore_hotkeys_in_fullscreen: true,
             game_mode: false,
             smooth_caret: true,
-            switch_to_english_layout: true,
+            switch_to_english_layout: false,
+            keyboard_layout_default_migrated: false,
             use_system_accent: true,
             custom_selection_color: default_selection_color(),
             launcher_width: DEFAULT_LAUNCHER_WIDTH,
@@ -332,6 +335,13 @@ impl Settings {
         let mut settings: Self = serde_json::from_str(&contents)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         settings.normalize();
+        // 一次性迁移：v0.2.0 及之前该选项默认开启且随配置显式序列化为 true，
+        // 对中文用户会在每次激活时打断输入法。首次加载时回置为默认关闭并写入
+        // 迁移标记，此后用户显式修改的值不再被覆盖。
+        if !settings.keyboard_layout_default_migrated {
+            settings.switch_to_english_layout = false;
+            settings.keyboard_layout_default_migrated = true;
+        }
         Ok(settings)
     }
 
@@ -379,7 +389,7 @@ mod tests {
         assert_eq!(settings.activation_hotkey, HotkeyConfig::default());
         assert!(settings.ignore_hotkeys_in_fullscreen);
         assert!(settings.smooth_caret);
-        assert!(settings.switch_to_english_layout);
+        assert!(!settings.switch_to_english_layout);
         assert!(settings.use_system_accent);
         assert_eq!(settings.custom_selection_color, 0x4c8bf4);
         assert_eq!(settings.launcher_width, DEFAULT_LAUNCHER_WIDTH);
@@ -418,7 +428,8 @@ mod tests {
             ignore_hotkeys_in_fullscreen: false,
             game_mode: true,
             smooth_caret: false,
-            switch_to_english_layout: false,
+            switch_to_english_layout: true,
+            keyboard_layout_default_migrated: true,
             use_system_accent: false,
             custom_selection_color: 0x12ab34,
             launcher_width: 640,
@@ -449,6 +460,35 @@ mod tests {
 
         expected.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path).unwrap(), expected);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn legacy_layout_setting_is_migrated_to_disabled_once() {
+        let path = temporary_path("settings-layout-migration");
+        let legacy = r#"{"game_mode":false,"switch_to_english_layout":true}"#;
+        fs::write(&path, legacy).unwrap();
+
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(!loaded.switch_to_english_layout);
+        assert!(loaded.keyboard_layout_default_migrated);
+
+        loaded.save_to(&path).unwrap();
+        let reloaded = Settings::load_from(&path).unwrap();
+        assert!(!reloaded.switch_to_english_layout);
+        assert!(reloaded.keyboard_layout_default_migrated);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn explicit_layout_choice_survives_once_migration_marker_is_present() {
+        let path = temporary_path("settings-layout-explicit");
+        let explicit =
+            r#"{"switch_to_english_layout":true,"keyboard_layout_default_migrated":true}"#;
+        fs::write(&path, explicit).unwrap();
+
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(loaded.switch_to_english_layout);
         fs::remove_file(path).unwrap();
     }
 
