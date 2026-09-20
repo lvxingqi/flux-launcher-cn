@@ -26,6 +26,7 @@ use crate::update_state::{format_bytes, format_update_progress};
 use crate::updater::relaunch_mode_for_auto_install;
 use crate::window_state::{launcher_window_geometry, should_show_everything_install_prompt};
 use flux_core::{rank_results_with_priorities, ResultKind, ResultSource, SearchResult};
+use flux_core::{DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH};
 use windui::event::{Key, KeyEvent};
 
 #[test]
@@ -727,13 +728,13 @@ fn activation_clear_uses_compact_geometry_after_expanded_query() {
     assert_eq!(
         launcher_window_geometry(false, true),
         (
-            super::DEFAULT_LAUNCHER_WIDTH as i32,
-            super::DEFAULT_LAUNCHER_HEIGHT as i32,
+            DEFAULT_LAUNCHER_WIDTH as i32,
+            DEFAULT_LAUNCHER_HEIGHT as i32,
         )
     );
     assert_eq!(
         launcher_window_geometry(false, false),
-        (super::DEFAULT_LAUNCHER_WIDTH as i32, COMPACT_WINDOW_HEIGHT)
+        (DEFAULT_LAUNCHER_WIDTH as i32, COMPACT_WINDOW_HEIGHT)
     );
 }
 
