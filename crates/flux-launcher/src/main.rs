@@ -54,13 +54,13 @@ use actions::ActionItem;
 pub(crate) use actions::ActionKind;
 use everything::{refresh_everything_status_cheap, EverythingRuntimeState};
 use flux_core::{
-    should_suppress_activation, HotkeyConfig, MonitorPreference, SearchModel,
+    should_suppress_activation, HotkeyConfig, MonitorPreference, SearchModel, Settings,
     DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH,
     MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
-    language_preference_from_index, language_preference_index,
+    language_preference_from_index, language_preference_index, I18nHub,
 };
 use interval_state::dispatch_query;
 #[cfg(test)]
@@ -77,6 +77,7 @@ pub(crate) use query::should_publish_initial_query_results;
 use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{save_settings, set_game_mode, LauncherSettingsState};
+use settings_view::SettingsUiState;
 use ui_helpers::{
     action_bar_content, game_mode_label, launcher_theme, priorities_empty, selection_color_hex,
     selection_palette,
@@ -157,51 +158,85 @@ impl Widget for ActionBarGeometryProbe {
     }
 }
 
-fn main() {
-    #[cfg(windows)]
-    {
-        // Monitor coordinates are queried before windui creates the HWND. Set
-        // per-monitor awareness first so Windows does not virtualize the
-        // 4K/mixed-DPI work area used for the initial center position.
-        use windows::Win32::UI::HiDpi::{
-            SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-        };
-        unsafe {
-            let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        }
-    }
-    apply_system_locale();
-    let mut args = std::env::args_os();
-    let _executable = args.next();
-    let mode = args.next();
-    if entry::run_special_mode(mode.as_deref(), &mut args) {
-        return;
-    }
-    let single_instance_disabled = std::env::var_os("FLUX_DISABLE_SINGLE_INSTANCE").is_some();
-    if !single_instance_disabled
-        && entry::should_claim_single_instance(mode.as_deref())
-        && matches!(
-            windui::claim_instance(SINGLE_INSTANCE_ID),
-            windui::InstanceRole::Handoff
-        )
-    {
-        return;
-    }
-    // The uninstaller uses this one-shot mode only to reach the already-running
-    // instance through the single-instance listener. Never create a new UI if
-    // there is no instance left to shut down.
-    if entry::is_shutdown_mode(mode.as_deref()) {
-        return;
-    }
-    let (settings, startup_launch) = entry::load_settings(mode.as_deref());
-    let activation_hotkey = hotkeys::activation_hotkey(&settings.activation_hotkey);
-    let settings_state = LauncherSettingsState::from_settings(&settings);
-    let shared_settings = settings_state.shared_settings;
-    let query_history = settings_state.query_history;
-    let priorities = settings_state.priorities;
-    let history_cursor = signal(None::<usize>);
-    let history_mode = signal(false);
+/// `main()` 启动阶段创建的全部 Signal 与共享状态。Signal 创建顺序敏感，
+/// 因此统一收敛到 `init_launcher_state` 内按原顺序创建，再由 `main()` 解构为
+/// 与原先同名的局部变量，保证后续组装代码零改动。
+struct LauncherState {
+    query: Signal<String>,
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    selection_touched: Signal<bool>,
+    action_mode: Signal<bool>,
+    action_index: Signal<usize>,
+    action_scroll_pending: Signal<bool>,
+    recycle_bin_confirmation: Signal<bool>,
+    action_items: Signal<Vec<ActionItem>>,
+    action_window_slot: Rc<RefCell<Option<WindowSizeHandle>>>,
+    i18n_hub: I18nHub,
+    status: Signal<String>,
+    update_status: Signal<String>,
+    update_available: Signal<Option<updater::StableUpdate>>,
+    update_install_progress: Signal<Option<(String, updater::DownloadProgress)>>,
+    update_installing: Signal<bool>,
+    current_sequence: Signal<u64>,
+    game_mode: Signal<bool>,
+    game_mode_status: Signal<String>,
+    settings_ui: SettingsUiState,
+    settings_visible: Signal<bool>,
+    settings_tab: Signal<usize>,
+    language_preference: Signal<usize>,
+    show_results: Signal<bool>,
+    activation_key: Signal<String>,
+    activation_display: Signal<String>,
+    activation_recording: Signal<bool>,
+    activation_ctrl: Signal<bool>,
+    activation_alt: Signal<bool>,
+    activation_shift: Signal<bool>,
+    activation_meta: Signal<bool>,
+    ignore_fullscreen: Signal<bool>,
+    smooth_caret: Signal<bool>,
+    switch_to_english_layout: Signal<bool>,
+    use_system_accent: Signal<bool>,
+    custom_selection_color: Signal<String>,
+    launcher_width: Signal<u16>,
+    launcher_height: Signal<u16>,
+    launcher_width_input: Signal<String>,
+    launcher_height_input: Signal<String>,
+    launcher_width_slider: Signal<f32>,
+    launcher_height_slider: Signal<f32>,
+    launcher_preview_text: Signal<String>,
+    visual_preview_generation: Signal<u64>,
+    clear_query_on_activation: Signal<bool>,
+    start_with_windows: Signal<bool>,
+    auto_enable_everything: Signal<bool>,
+    everything_detection: Arc<settings_view::EverythingDetectionSlot>,
+    update_checks_enabled: Signal<bool>,
+    update_interval_hours: Signal<String>,
+    auto_install_updates: Signal<bool>,
+    obsidian_enabled: Signal<bool>,
+    obsidian_alias: Signal<String>,
+    google_enabled: Signal<bool>,
+    google_alias: Signal<String>,
+    system_commands_enabled: Signal<bool>,
+    monitor_preference: Signal<usize>,
+    initial_monitor_preference: MonitorPreference,
+    everything_installed: Signal<bool>,
+    everything_prompt_visible_at_start: bool,
+    everything_prompt_visible: Signal<bool>,
+    everything_status: Signal<String>,
+    selection_color: Signal<Color>,
+    caret_duration: Signal<String>,
+}
 
+fn init_launcher_state(
+    settings: &Settings,
+    settings_state: &LauncherSettingsState,
+) -> LauncherState {
+    let i18n_hub = settings_state.i18n_hub.clone();
+    let game_mode = settings_state.game_mode;
+    let game_mode_status = settings_state.game_mode_status;
+    let settings_ui = settings_state.settings_ui;
+    let language_preference = settings_state.language_preference;
     let query = signal(String::new());
     let selected_id = signal(String::new());
     let selected_index = signal(0_usize);
@@ -212,19 +247,14 @@ fn main() {
     let recycle_bin_confirmation = signal(false);
     let action_items = signal(Vec::<ActionItem>::new());
     let action_window_slot = Rc::new(RefCell::new(None::<WindowSizeHandle>));
-    let i18n_hub = settings_state.i18n_hub;
     let status = i18n_hub.tr(|| t!("status.ready").into_owned());
     let update_status = i18n_hub.tr(|| t!("updater.checked_automatically").into_owned());
     let update_available = signal(None::<updater::StableUpdate>);
     let update_install_progress = signal(None::<(String, updater::DownloadProgress)>);
     let update_installing = signal(false);
     let current_sequence = signal(0_u64);
-    let game_mode = settings_state.game_mode;
-    let game_mode_status = settings_state.game_mode_status;
-    let settings_ui = settings_state.settings_ui;
     let settings_visible = settings_ui.visible;
     let settings_tab = settings_ui.tab;
-    let language_preference = settings_state.language_preference;
     let show_results = signal(false);
     let activation_key = signal(settings.activation_hotkey.key.clone());
     let activation_display = signal(hotkeys::display_config(&settings.activation_hotkey));
@@ -283,15 +313,194 @@ fn main() {
         })
         .unwrap_or(settings.monitor_preference);
     let monitor_preference = signal(monitor_preference_index(initial_monitor_preference));
-    let everything_state = EverythingRuntimeState::new(&settings);
+    let everything_state = EverythingRuntimeState::new(settings);
     let everything_installed = everything_state.installed;
     let everything_prompt_visible_at_start = everything_state.prompt_visible_at_start;
     let everything_prompt_visible = everything_state.prompt_visible;
     let everything_status = everything_state.status;
-    let selection_color = signal(selection_color_for_settings(&settings));
+    let selection_color = signal(selection_color_for_settings(settings));
     let caret_duration = signal(settings.smooth_caret_duration_ms.to_string());
 
+    LauncherState {
+        query,
+        selected_id,
+        selected_index,
+        selection_touched,
+        action_mode,
+        action_index,
+        action_scroll_pending,
+        recycle_bin_confirmation,
+        action_items,
+        action_window_slot,
+        i18n_hub,
+        status,
+        update_status,
+        update_available,
+        update_install_progress,
+        update_installing,
+        current_sequence,
+        game_mode,
+        game_mode_status,
+        settings_ui,
+        settings_visible,
+        settings_tab,
+        language_preference,
+        show_results,
+        activation_key,
+        activation_display,
+        activation_recording,
+        activation_ctrl,
+        activation_alt,
+        activation_shift,
+        activation_meta,
+        ignore_fullscreen,
+        smooth_caret,
+        switch_to_english_layout,
+        use_system_accent,
+        custom_selection_color,
+        launcher_width,
+        launcher_height,
+        launcher_width_input,
+        launcher_height_input,
+        launcher_width_slider,
+        launcher_height_slider,
+        launcher_preview_text,
+        visual_preview_generation,
+        clear_query_on_activation,
+        start_with_windows,
+        auto_enable_everything,
+        everything_detection,
+        update_checks_enabled,
+        update_interval_hours,
+        auto_install_updates,
+        obsidian_enabled,
+        obsidian_alias,
+        google_enabled,
+        google_alias,
+        system_commands_enabled,
+        monitor_preference,
+        initial_monitor_preference,
+        everything_installed,
+        everything_prompt_visible_at_start,
+        everything_prompt_visible,
+        everything_status,
+        selection_color,
+        caret_duration,
+    }
+}
+
+fn main() {
+    #[cfg(windows)]
+    {
+        // Monitor coordinates are queried before windui creates the HWND. Set
+        // per-monitor awareness first so Windows does not virtualize the
+        // 4K/mixed-DPI work area used for the initial center position.
+        use windows::Win32::UI::HiDpi::{
+            SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        };
+        unsafe {
+            let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+    }
+    apply_system_locale();
+    let mut args = std::env::args_os();
+    let _executable = args.next();
+    let mode = args.next();
+    if entry::run_special_mode(mode.as_deref(), &mut args) {
+        return;
+    }
+    let single_instance_disabled = std::env::var_os("FLUX_DISABLE_SINGLE_INSTANCE").is_some();
+    if !single_instance_disabled
+        && entry::should_claim_single_instance(mode.as_deref())
+        && matches!(
+            windui::claim_instance(SINGLE_INSTANCE_ID),
+            windui::InstanceRole::Handoff
+        )
+    {
+        return;
+    }
+    // The uninstaller uses this one-shot mode only to reach the already-running
+    // instance through the single-instance listener. Never create a new UI if
+    // there is no instance left to shut down.
+    if entry::is_shutdown_mode(mode.as_deref()) {
+        return;
+    }
+    let (settings, startup_launch) = entry::load_settings(mode.as_deref());
+    let activation_hotkey = hotkeys::activation_hotkey(&settings.activation_hotkey);
+    let settings_state = LauncherSettingsState::from_settings(&settings);
+    let shared_settings = Arc::clone(&settings_state.shared_settings);
+    let query_history = Rc::clone(&settings_state.query_history);
+    let priorities = settings_state.priorities;
+    let history_cursor = signal(None::<usize>);
+    let history_mode = signal(false);
+
     let mut model = SearchModel::new();
+    let LauncherState {
+        query,
+        selected_id,
+        selected_index,
+        selection_touched,
+        action_mode,
+        action_index,
+        action_scroll_pending,
+        recycle_bin_confirmation,
+        action_items,
+        action_window_slot,
+        i18n_hub,
+        status,
+        update_status,
+        update_available,
+        update_install_progress,
+        update_installing,
+        current_sequence,
+        game_mode,
+        game_mode_status,
+        settings_ui,
+        settings_visible,
+        settings_tab,
+        language_preference,
+        show_results,
+        activation_key,
+        activation_display,
+        activation_recording,
+        activation_ctrl,
+        activation_alt,
+        activation_shift,
+        activation_meta,
+        ignore_fullscreen,
+        smooth_caret,
+        switch_to_english_layout,
+        use_system_accent,
+        custom_selection_color,
+        launcher_width,
+        launcher_height,
+        launcher_width_input,
+        launcher_height_input,
+        launcher_width_slider,
+        launcher_height_slider,
+        launcher_preview_text,
+        visual_preview_generation,
+        clear_query_on_activation,
+        start_with_windows,
+        auto_enable_everything,
+        everything_detection,
+        update_checks_enabled,
+        update_interval_hours,
+        auto_install_updates,
+        obsidian_enabled,
+        obsidian_alias,
+        google_enabled,
+        google_alias,
+        system_commands_enabled,
+        monitor_preference,
+        initial_monitor_preference,
+        everything_installed,
+        everything_prompt_visible_at_start,
+        everything_prompt_visible,
+        everything_status,
+        selection_color,
+        caret_duration,
+    } = init_launcher_state(&settings, &settings_state);
     let search_state = SearchRuntimeState::new(model.results().to_vec());
     let results = search_state.results;
     let provider_results = search_state.provider_results;
