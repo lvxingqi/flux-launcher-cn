@@ -19,7 +19,10 @@ repository = "https://github.com/lvxingqi/flux-launcher-cn"
 
 [profile.release]
 opt-level = "z"
-lto = true
+# 使用 thin LTO：fat LTO（true）在 codegen-units = 1 下对最终二进制做单线程位码优化，
+# 是 workspace 成员编译的主要成本（实测 flux-launcher 单元 63.5s vs thin 约 30s），
+# 代价是产物体积约 +7.6%（exe 3.70 MB → 3.98 MB），不影响运行时内存与行为。
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = true
