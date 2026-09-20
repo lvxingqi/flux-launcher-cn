@@ -13,7 +13,6 @@ action_bar:
   run_as_admin: Run as admin
   open_file_location: Open file location
 everything:
-  detected_enable_ipc: Everything detected; Flux will enable IPC automatically
   not_installed_winget: Everything is not installed. Install it with winget to enable file search.
   install: Install Everything
   prompt_install_question: Everything is not installed. Install it now for fast indexed file and folder search?
@@ -22,9 +21,10 @@ everything:
   install_started: Everything installation started with winget.
   install_started_toast: Everything installation started
   auto_enable_disabled: Everything auto-enable is disabled in Flux settings
+  detecting: Detecting Everything installation…
   ipc_available: Everything IPC is available
   ipc_unavailable: Everything is installed but its local IPC is unavailable
-  detected_enabling_ipc: Everything detected; Flux is enabling local IPC automatically
+  ipc_unavailable_after_start: Everything is installed but its local IPC is still unavailable; Flux tried starting it in the background—start Everything manually if search still fails
   winget_started_restart: winget install started. Restart Flux after Everything is installed.
   winget_started_toast: winget install started
   unavailable: Everything is not available
@@ -73,7 +73,7 @@ settings:
   game_mode: Game Mode
   game_mode_desc: Suppress the launcher until manually disabled
   keyboard_layout: Keyboard layout
-  keyboard_layout_desc: Start typing in English and restore the previous layout on hide
+  keyboard_layout_desc: Off by default. When enabled, the launcher switches to an English layout on activation and restores it on hide
   query_on_activation: Query on activation
   query_on_activation_desc: Clear the previous query when opened with the global hotkey
   windows_startup: Windows startup

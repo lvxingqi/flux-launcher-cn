@@ -13,7 +13,6 @@ action_bar:
   run_as_admin: 以管理员身份运行
   open_file_location: 打开文件位置
 everything:
-  detected_enable_ipc: 已检测到 Everything；Flux 将自动启用本地 IPC
   not_installed_winget: 未安装 Everything。请使用 winget 安装以启用文件搜索。
   install: 安装 Everything
   prompt_install_question: 未安装 Everything。是否立即安装以获得快速索引的文件与文件夹搜索？
@@ -22,9 +21,10 @@ everything:
   install_started: 已通过 winget 开始安装 Everything。
   install_started_toast: 已开始安装 Everything
   auto_enable_disabled: 已在 Flux 设置中禁用 Everything 自动启用
+  detecting: 正在检测 Everything 安装状态…
   ipc_available: Everything IPC 可用
   ipc_unavailable: 已安装 Everything，但其本地 IPC 不可用
-  detected_enabling_ipc: 已检测到 Everything；Flux 正在自动启用本地 IPC
+  ipc_unavailable_after_start: 已安装 Everything，但本地 IPC 仍不可用；Flux 已在后台尝试启动它，若仍无结果请手动启动 Everything
   winget_started_restart: winget 安装已开始。安装完成后请重启 Flux。
   winget_started_toast: winget 安装已开始
   unavailable: Everything 不可用
@@ -73,7 +73,7 @@ settings:
   game_mode: 游戏模式
   game_mode_desc: 压制启动器直到手动禁用
   keyboard_layout: 键盘布局
-  keyboard_layout_desc: 开始输入时切换到英文布局，隐藏时恢复之前的布局
+  keyboard_layout_desc: 默认关闭。开启后启动器激活时切换到英文布局，隐藏时恢复之前的布局
   query_on_activation: 激活时的查询
   query_on_activation_desc: 通过全局热键打开时清空之前的查询
   windows_startup: Windows 启动

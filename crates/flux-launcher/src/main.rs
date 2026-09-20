@@ -53,7 +53,7 @@ use crate::launch::trace_launch_event;
 use actions::ActionItem;
 #[cfg(test)]
 pub(crate) use actions::ActionKind;
-use everything::{EverythingRuntimeState, InstallationState};
+use everything::EverythingRuntimeState;
 use flux_core::{
     should_suppress_activation, HotkeyConfig, MonitorPreference, ResultKind, SearchModel,
     SearchResult, Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT,
@@ -274,6 +274,25 @@ fn title_match_doc(title: &str, query: &str) -> RichDoc {
     RichDoc::new().para(para)
 }
 
+/// 低成本刷新 Everything 状态文本：注册表读取（约 0ms）+ IPC 探测（约 3-5ms），
+/// 不枚举进程、也不拉起 Everything，可安全用于窗口激活与设置保存等 UI 线程路径。
+///
+/// 目的：状态文案反映真实可用性——用户在外部退出 Everything 后，这里会立即
+/// 把状态改成「已安装但 IPC 不可用」，而不是保留启动时的陈旧结论。
+fn refresh_everything_status_cheap(
+    auto_enable: Signal<bool>,
+    installed: Signal<bool>,
+    status: Signal<String>,
+) {
+    if !auto_enable.get() {
+        status.set(t!("everything.auto_enable_disabled").into_owned());
+        return;
+    }
+    let outcome = everything::refresh_state_cheap();
+    installed.set(outcome.is_installed());
+    status.set(outcome.status_message());
+}
+
 fn normalize_everything_query(query: &str) -> String {
     let trimmed = query.trim();
     let Some(rest) = trimmed.strip_prefix('.') else {
@@ -489,6 +508,7 @@ fn main() {
     let clear_query_on_activation = signal(settings.clear_query_on_activation);
     let start_with_windows = signal(settings.start_with_windows);
     let auto_enable_everything = signal(settings.auto_enable_everything);
+    let everything_detection = Arc::new(crate::settings_view::EverythingDetectionSlot::default());
     let update_checks_enabled = signal(settings.update_checks_enabled);
     let update_interval_hours = signal(settings.update_interval_hours.to_string());
     let auto_install_updates = signal(settings.auto_install_updates);
@@ -698,6 +718,7 @@ fn main() {
     let everything_prompt_visible_for_interval = everything_prompt_visible;
     let everything_installed_for_interval = everything_installed;
     let everything_status_for_interval = everything_status;
+    let everything_detection_for_interval = Arc::clone(&everything_detection);
     let visual_preview_generation_for_interval = visual_preview_generation;
     let visual_preview_smoke_for_interval =
         std::env::var_os("FLUX_SMOKE_VISUAL_SETTINGS").is_some();
@@ -792,13 +813,9 @@ fn main() {
     let native_sender = provider_channels.native_sender;
     if settings.auto_enable_everything {
         match everything::start_background_if_installed() {
-            Ok(InstallationState::Installed(_)) => {
-                everything_installed.set(true);
-                everything_status.set(t!("everything.detected_enabling_ipc").into_owned());
-            }
-            Ok(InstallationState::Missing) => {
-                everything_installed.set(false);
-                everything_status.set(t!("everything.not_installed_winget").into_owned());
+            Ok(outcome) => {
+                everything_installed.set(outcome.is_installed());
+                everything_status.set(outcome.status_message());
             }
             Err(error) => {
                 everything_status.set(error);
@@ -1387,15 +1404,13 @@ fn main() {
             google_alias.set(saved.google_alias.clone());
             system_commands_enabled.set(saved.system_commands_enabled);
             monitor_preference.set(monitor_preference_index(saved.monitor_preference));
-            everything_status.set(if saved.auto_enable_everything {
-                if everything_installed.get() {
-                    t!("everything.detected_enable_ipc").into_owned()
-                } else {
-                    t!("everything.not_installed_winget").into_owned()
-                }
-            } else {
-                t!("everything.auto_enable_disabled").into_owned()
-            });
+            // 设置变更（例如切换语言）后刷新状态文案；这里同样使用低成本刷新，
+            // 如实反映 Everything 当前的安装与 IPC 状态。
+            refresh_everything_status_cheap(
+                auto_enable_everything,
+                everything_installed,
+                everything_status,
+            );
 
             let target_height = if show_results.get() {
                 i32::from(saved.launcher_height)
@@ -1874,19 +1889,11 @@ fn main() {
                                             .set(game_mode_label(settings.game_mode));
                                         if settings.auto_enable_everything {
                                             match everything::start_background_if_installed() {
-                                                Ok(InstallationState::Installed(_)) => {
-                                                    everything_installed.set(true);
-                                                    everything_status_for_apply.set(
-                                                        t!("everything.detected_enable_ipc")
-                                                            .into_owned(),
-                                                    );
-                                                }
-                                                Ok(InstallationState::Missing) => {
-                                                    everything_installed.set(false);
-                                                    everything_status_for_apply.set(
-                                                        t!("everything.not_installed_winget")
-                                                            .into_owned(),
-                                                    );
+                                                Ok(outcome) => {
+                                                    everything_installed
+                                                        .set(outcome.is_installed());
+                                                    everything_status_for_apply
+                                                        .set(outcome.status_message());
                                                 }
                                                 Err(error) => {
                                                     everything_status_for_apply.set(error)
@@ -1963,6 +1970,7 @@ fn main() {
                         auto_enable: auto_enable_everything,
                         installed: everything_installed,
                         status: everything_status,
+                        detection: Arc::clone(&everything_detection),
                         obsidian_enabled,
                         obsidian_alias,
                         google_enabled,
@@ -2275,6 +2283,22 @@ fn main() {
                     status.replace(' ', "_")
                 );
                 everything_plugins_smoke_reported = true;
+            }
+            if let Some(result) = everything_detection_for_interval.take_result() {
+                // Everything 自动启用检测在后台线程完成；此处仅在 UI 线程回填信号。
+                // 若用户在此期间关闭了自动启用，则以禁用文案为准，不回填陈旧检测结果。
+                if !auto_enable_everything_for_interval.get() {
+                    everything_status_for_interval
+                        .set(t!("everything.auto_enable_disabled").into_owned());
+                } else {
+                    match result {
+                        Ok(outcome) => {
+                            everything_installed_for_interval.set(outcome.is_installed());
+                            everything_status_for_interval.set(outcome.status_message());
+                        }
+                        Err(error) => everything_status_for_interval.set(error),
+                    }
+                }
             }
             if settings_is_visible && !last_settings_visible {
                 if let Ok(settings) = settings_for_interval_geometry.read() {
@@ -2597,9 +2621,16 @@ fn main() {
             selection_color,
             window_size.clone(),
         ))
-        .on_window_activated(window_lifecycle::on_window_activated(Arc::clone(
-            &shared_settings,
-        )))
+        .on_window_activated(window_lifecycle::on_window_activated(
+            Arc::clone(&shared_settings),
+            move || {
+                refresh_everything_status_cheap(
+                    auto_enable_everything,
+                    everything_installed,
+                    everything_status,
+                );
+            },
+        ))
         .on_window_hide(window_lifecycle::on_window_hide(
             Arc::clone(&shared_settings),
             Rc::clone(&cancel_settings),

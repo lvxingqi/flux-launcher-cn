@@ -46,10 +46,14 @@ impl EverythingRuntimeState {
             prompt_disabled,
         );
         let installed = signal(installed_at_start);
-        let status = signal(if installed_at_start {
-            t!("everything.detected_enable_ipc").into_owned()
-        } else {
+        let status = signal(if !installed_at_start {
             t!("everything.not_installed_winget").into_owned()
+        } else if settings.auto_enable_everything {
+            // 真实的 IPC 可用性由紧随其后的 start_background_if_installed() 回填；
+            // 这里不预判「已启用 IPC」，避免状态文案与事实不符。
+            t!("everything.detecting").into_owned()
+        } else {
+            t!("everything.auto_enable_disabled").into_owned()
         });
         Self {
             installed,
@@ -77,6 +81,112 @@ impl InstallationState {
     pub fn is_installed(&self) -> bool {
         matches!(self, Self::Installed(_))
     }
+}
+
+/// 检测结果：安装状态 + 真实 IPC 可用性 + 本次是否尝试后台拉起 Everything。
+///
+/// 安装状态来自注册表（静态），IPC 可用性来自窗口消息连接（动态）。两者必须分开
+/// 传递，否则 UI 会把「装了」当成「可用」——用户退出 Everything 后仍显示
+/// 「IPC 可用」正是这样产生的。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EverythingStartup {
+    installation: InstallationState,
+    ipc_available: bool,
+    started_now: bool,
+}
+
+impl EverythingStartup {
+    fn new(installation: InstallationState, ipc_available: bool, started_now: bool) -> Self {
+        Self {
+            installation,
+            ipc_available,
+            started_now,
+        }
+    }
+
+    pub fn is_installed(&self) -> bool {
+        self.installation.is_installed()
+    }
+
+    /// 当前探测时刻 IPC 是否真实可用。
+    #[cfg(test)]
+    pub fn ipc_available(&self) -> bool {
+        self.ipc_available
+    }
+
+    /// 本次检测是否刚刚在后台拉起 Everything（IPC 可能仍在初始化）。
+    #[cfg(test)]
+    pub fn started_now(&self) -> bool {
+        self.started_now
+    }
+
+    pub(crate) fn status_kind(&self) -> EverythingStatusKind {
+        status_kind(
+            self.installation.is_installed(),
+            self.ipc_available,
+            self.started_now,
+        )
+    }
+
+    /// 设置页状态文案（i18n），与真实可用性一致。
+    pub(crate) fn status_message(&self) -> String {
+        self.status_kind().message()
+    }
+}
+
+/// 状态文案分档：把「安装状态 + 真实 IPC 可用性」映射到用户可见文案。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EverythingStatusKind {
+    NotInstalled,
+    IpcAvailable,
+    IpcUnavailable,
+    IpcUnavailableAfterStart,
+}
+
+impl EverythingStatusKind {
+    pub(crate) fn message(self) -> String {
+        match self {
+            Self::NotInstalled => t!("everything.not_installed_winget").into_owned(),
+            Self::IpcAvailable => t!("everything.ipc_available").into_owned(),
+            Self::IpcUnavailable => t!("everything.ipc_unavailable").into_owned(),
+            Self::IpcUnavailableAfterStart => {
+                t!("everything.ipc_unavailable_after_start").into_owned()
+            }
+        }
+    }
+}
+
+fn status_kind(installed: bool, ipc_available: bool, started_now: bool) -> EverythingStatusKind {
+    if !installed {
+        EverythingStatusKind::NotInstalled
+    } else if ipc_available {
+        EverythingStatusKind::IpcAvailable
+    } else if started_now {
+        EverythingStatusKind::IpcUnavailableAfterStart
+    } else {
+        EverythingStatusKind::IpcUnavailable
+    }
+}
+
+#[cfg(windows)]
+fn probe_ipc() -> bool {
+    EverythingClient::new().is_ok()
+}
+
+#[cfg(not(windows))]
+fn probe_ipc() -> bool {
+    false
+}
+
+/// 窗口显示时的低成本状态刷新：注册表读取（约 0ms）+ IPC 探测（实测约 3-5ms）。
+///
+/// 刻意不枚举 `tasklist`、也不拉起 Everything，因此可以安全地放在激活回调里；
+/// 用途是把「用户刚退出了 Everything」这类运行时变化如实反映到设置页状态，
+/// 而不是沿用启动时的陈旧结论。
+pub(crate) fn refresh_state_cheap() -> EverythingStartup {
+    let installation = installation_state();
+    let ipc_available = installation.is_installed() && probe_ipc();
+    EverythingStartup::new(installation, ipc_available, false)
 }
 
 pub fn installation_state() -> InstallationState {
@@ -130,10 +240,10 @@ fn everything_process_running() -> bool {
         .any(|line| line.trim_start().starts_with("\"Everything.exe\""))
 }
 
-pub fn start_background_if_installed() -> Result<InstallationState, String> {
+pub fn start_background_if_installed() -> Result<EverythingStartup, String> {
     let state = installation_state();
     let InstallationState::Installed(path) = &state else {
-        return Ok(state);
+        return Ok(EverythingStartup::new(state, false, false));
     };
 
     #[cfg(windows)]
@@ -141,18 +251,19 @@ pub fn start_background_if_installed() -> Result<InstallationState, String> {
         let _guard = everything_start_lock()
             .lock()
             .map_err(|_| String::from("Everything startup lock is poisoned"))?;
-        let ipc_available = EverythingClient::new().is_ok();
+        let ipc_available = probe_ipc();
         if ipc_available {
             everything_start_requested().store(false, Ordering::Release);
-            return Ok(state);
+            return Ok(EverythingStartup::new(state, true, false));
         }
         let process_running = everything_process_running();
         if !should_start_everything(ipc_available, process_running) {
             everything_start_requested().store(false, Ordering::Release);
-            return Ok(state);
+            return Ok(EverythingStartup::new(state, false, false));
         }
         if everything_start_requested().load(Ordering::Acquire) {
-            return Ok(state);
+            // 本进程已请求过拉起，IPC 仍未就绪：如实报告「已尝试启动，但仍不可用」。
+            return Ok(EverythingStartup::new(state, false, true));
         }
 
         everything_start_requested().store(true, Ordering::Release);
@@ -166,8 +277,14 @@ pub fn start_background_if_installed() -> Result<InstallationState, String> {
                 "Unable to start Everything in the background: {error}"
             ));
         }
+        // 刚拉起时 IPC 尚未就绪，不能声称可用。
+        Ok(EverythingStartup::new(state, false, true))
     }
-    Ok(state)
+
+    #[cfg(not(windows))]
+    {
+        Ok(EverythingStartup::new(state, false, false))
+    }
 }
 
 pub fn launch_winget_install() -> Result<(), String> {
@@ -455,5 +572,59 @@ mod tests {
             join_everything_path(r"C:\Windows\", "explorer.exe"),
             r"C:\Windows\explorer.exe"
         );
+    }
+
+    #[test]
+    fn status_kind_separates_installation_from_live_ipc_availability() {
+        use super::{status_kind, EverythingStatusKind};
+
+        // 未安装：无论 IPC 探测结果如何，都只能报未安装。
+        assert_eq!(
+            status_kind(false, false, false),
+            EverythingStatusKind::NotInstalled
+        );
+        // 已安装且 IPC 真实可用。
+        assert_eq!(
+            status_kind(true, true, false),
+            EverythingStatusKind::IpcAvailable
+        );
+        // 已安装但 IPC 不可用：这是「用户退出 Everything」后的真实状态，
+        // 不得再显示为可用。
+        assert_eq!(
+            status_kind(true, false, false),
+            EverythingStatusKind::IpcUnavailable
+        );
+        // 已尝试后台拉起但 IPC 仍未就绪。
+        assert_eq!(
+            status_kind(true, false, true),
+            EverythingStatusKind::IpcUnavailableAfterStart
+        );
+    }
+
+    #[test]
+    fn startup_outcome_reports_truthful_ipc_state_when_process_was_started() {
+        use super::{EverythingStartup, EverythingStatusKind, InstallationState};
+
+        let outcome = EverythingStartup::new(
+            InstallationState::Installed(std::path::PathBuf::from("Everything.exe")),
+            false,
+            true,
+        );
+        assert!(outcome.is_installed());
+        assert!(!outcome.ipc_available());
+        assert!(outcome.started_now());
+        assert_eq!(
+            outcome.status_kind(),
+            EverythingStatusKind::IpcUnavailableAfterStart
+        );
+
+        let available = EverythingStartup::new(
+            InstallationState::Installed(std::path::PathBuf::from("Everything.exe")),
+            true,
+            false,
+        );
+        assert_eq!(available.status_kind(), EverythingStatusKind::IpcAvailable);
+        assert!(available.ipc_available());
+        assert!(!available.started_now());
     }
 }
