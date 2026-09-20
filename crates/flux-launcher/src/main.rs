@@ -40,7 +40,7 @@ mod window_state;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::time::Duration;
 
 use crate::icons::{
@@ -54,9 +54,9 @@ use actions::ActionItem;
 pub(crate) use actions::ActionKind;
 use everything::{refresh_everything_status_cheap, EverythingRuntimeState};
 use flux_core::{
-    should_suppress_activation, HotkeyConfig, MonitorPreference, SearchModel, Settings,
-    DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH,
-    MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
+    should_suppress_activation, HotkeyConfig, MonitorPreference, SearchModel, SearchResult,
+    Settings, DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH, MAX_LAUNCHER_HEIGHT,
+    MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use i18n::{
     apply_configured_locale, apply_system_locale, configured_locale,
@@ -93,9 +93,9 @@ use window_state::{
     request_monitor_position, request_scroll, should_show_launcher, visual_preview_position,
     WindowBootstrap,
 };
-use windui::app::WindowSizeHandle;
+use windui::app::{CursorVisibilityHandle, WindowPositionHandle, WindowSizeHandle};
 use windui::core::Widget;
-use windui::event::{Key, KeyEvent};
+use windui::event::{HotkeyCtx, Key, KeyEvent};
 use windui::prelude::*;
 use windui::render::Canvas;
 
@@ -386,6 +386,87 @@ fn init_launcher_state(
         everything_status,
         selection_color,
         caret_duration,
+    }
+}
+
+/// 全局激活热键回调所需的句柄集合：窗口操作句柄 + 需要重置/读取的 launcher 状态。
+/// 回调本身不放 hwnd（见 vendor/windui 的借用纪律），只声明窗口操作意图。
+struct ActivationHotkeyState {
+    settings: Arc<RwLock<Settings>>,
+    position: WindowPositionHandle,
+    cursor_visibility: CursorVisibilityHandle,
+    size: WindowSizeHandle,
+    query: Signal<String>,
+    results: Signal<Vec<SearchResult>>,
+    selected_id: Signal<String>,
+    selected_index: Signal<usize>,
+    selection_touched: Signal<bool>,
+    show_results: Signal<bool>,
+    history_mode: Signal<bool>,
+    history_cursor: Signal<Option<usize>>,
+    action_mode: Signal<bool>,
+    action_index: Signal<usize>,
+    action_items: Signal<Vec<ActionItem>>,
+    inline_completion: Signal<String>,
+    scroll_request: Signal<bool>,
+    settings_visible: Signal<bool>,
+    launcher_width: Signal<u16>,
+    launcher_height: Signal<u16>,
+}
+
+/// 全局激活热键（默认 `Alt+Space`）的处理：清空查询 → 重算几何与显示器位置 →
+/// 按窗口「实际可见性」切换显示/隐藏。
+fn handle_activation_hotkey(ctx: &mut HotkeyCtx, state: &ActivationHotkeyState) {
+    let settings = state
+        .settings
+        .read()
+        .map(|settings| settings.clone())
+        .unwrap_or_default();
+    if should_suppress_activation(&settings, fullscreen::foreground_is_fullscreen()) {
+        return;
+    }
+    // Clear before toggling visibility. The previous implementation did
+    // this only from on_window_hide, which allowed the old query frame to
+    // survive in the compositor until the next repaint after re-show.
+    if settings.clear_query_on_activation {
+        state.query.set(String::new());
+        state.results.set(Vec::new());
+        state.selected_id.set(String::new());
+        state.selected_index.set(0);
+        state.selection_touched.set(false);
+        state.show_results.set(false);
+        state.history_mode.set(false);
+        state.history_cursor.set(None);
+        state.action_mode.set(false);
+        state.action_index.set(0);
+        state.action_items.set(Vec::new());
+        state.inline_completion.set(String::new());
+        state.scroll_request.set(false);
+        let (compact_width, compact_height) = launcher_window_geometry_with_sizes(
+            state.settings_visible.get(),
+            false,
+            i32::from(state.launcher_width.get()),
+            i32::from(state.launcher_height.get()),
+        );
+        state.size.set(compact_width, compact_height);
+    }
+    let (width, height) = launcher_window_geometry_with_sizes(
+        state.settings_visible.get(),
+        state.show_results.get(),
+        i32::from(state.launcher_width.get()),
+        i32::from(state.launcher_height.get()),
+    );
+    request_monitor_position(&state.position, settings.monitor_preference, width, height);
+    state.cursor_visibility.show();
+    // 切换方向按窗口「实际可见性」判定，而不是按前台归属：launcher 自隐藏后
+    // （例如刚启动一个不前置窗口或瞬间退出的程序）系统可能仍把它视为前台
+    // 窗口，此时按前台判断会误判为「已显示」而只发 hide，用户再按 Alt+Space
+    // 就唤不起窗口。可见性快照由 windui 平台层在派发 WM_HOTKEY 时提供
+    // （`HotkeyCtx` 刻意不持有 hwnd，见 vendor/windui 的借用纪律）。
+    if should_show_launcher(ctx.window_visible()) {
+        ctx.show_window();
+    } else {
+        ctx.hide_window();
     }
 }
 
@@ -800,79 +881,30 @@ fn main() {
     let plugin_worker = provider_workers.plugins;
     let native_plugin_worker = provider_workers.native_plugins;
 
-    let settings_for_activation = Arc::clone(&shared_settings);
-    let position_for_activation = window_position.clone();
-    let cursor_visibility_for_activation = cursor_visibility.clone();
-    let size_for_activation = window_size.clone();
-    let query_for_activation = query;
-    let results_for_activation = results;
-    let selected_id_for_activation = selected_id;
-    let selected_index_for_activation = selected_index;
-    let selection_touched_for_activation = selection_touched;
-    let show_results_for_activation = show_results;
-    let history_mode_for_activation = history_mode;
-    let history_cursor_for_activation = history_cursor;
-    let action_mode_for_activation = action_mode;
-    let action_index_for_activation = action_index;
-    let action_items_for_activation = action_items;
-    let inline_completion_for_activation = inline_completion;
-    let scroll_request_for_activation = scroll_request_for_rows;
-    let settings_visible_for_activation = settings_visible;
+    let activation_state = ActivationHotkeyState {
+        settings: Arc::clone(&shared_settings),
+        position: window_position.clone(),
+        cursor_visibility: cursor_visibility.clone(),
+        size: window_size.clone(),
+        query,
+        results,
+        selected_id,
+        selected_index,
+        selection_touched,
+        show_results,
+        history_mode,
+        history_cursor,
+        action_mode,
+        action_index,
+        action_items,
+        inline_completion,
+        scroll_request: scroll_request_for_rows,
+        settings_visible,
+        launcher_width,
+        launcher_height,
+    };
     let activation_handle = app.hotkey_handle(activation_hotkey, move |ctx| {
-        let settings = settings_for_activation
-            .read()
-            .map(|settings| settings.clone())
-            .unwrap_or_default();
-        if !should_suppress_activation(&settings, fullscreen::foreground_is_fullscreen()) {
-            // Clear before toggling visibility. The previous implementation did
-            // this only from on_window_hide, which allowed the old query frame to
-            // survive in the compositor until the next repaint after re-show.
-            if settings.clear_query_on_activation {
-                query_for_activation.set(String::new());
-                results_for_activation.set(Vec::new());
-                selected_id_for_activation.set(String::new());
-                selected_index_for_activation.set(0);
-                selection_touched_for_activation.set(false);
-                show_results_for_activation.set(false);
-                history_mode_for_activation.set(false);
-                history_cursor_for_activation.set(None);
-                action_mode_for_activation.set(false);
-                action_index_for_activation.set(0);
-                action_items_for_activation.set(Vec::new());
-                inline_completion_for_activation.set(String::new());
-                scroll_request_for_activation.set(false);
-                let (compact_width, compact_height) = launcher_window_geometry_with_sizes(
-                    settings_visible_for_activation.get(),
-                    false,
-                    i32::from(launcher_width.get()),
-                    i32::from(launcher_height.get()),
-                );
-                size_for_activation.set(compact_width, compact_height);
-            }
-            let (width, height) = launcher_window_geometry_with_sizes(
-                settings_visible_for_activation.get(),
-                show_results_for_activation.get(),
-                i32::from(launcher_width.get()),
-                i32::from(launcher_height.get()),
-            );
-            request_monitor_position(
-                &position_for_activation,
-                settings.monitor_preference,
-                width,
-                height,
-            );
-            cursor_visibility_for_activation.show();
-            // 切换方向按窗口「实际可见性」判定，而不是按前台归属：launcher 自隐藏后
-            // （例如刚启动一个不前置窗口或瞬间退出的程序）系统可能仍把它视为前台
-            // 窗口，此时按前台判断会误判为「已显示」而只发 hide，用户再按 Alt+Space
-            // 就唤不起窗口。可见性快照由 windui 平台层在派发 WM_HOTKEY 时提供
-            // （`HotkeyCtx` 刻意不持有 hwnd，见 vendor/windui 的借用纪律）。
-            if should_show_launcher(ctx.window_visible()) {
-                ctx.show_window();
-            } else {
-                ctx.hide_window();
-            }
-        }
+        handle_activation_hotkey(ctx, &activation_state);
     });
 
     let activation_handle_for_recorder = activation_handle.clone();
