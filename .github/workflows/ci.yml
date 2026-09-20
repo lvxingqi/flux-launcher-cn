@@ -31,27 +31,14 @@ jobs:
         shell: pwsh
         run: git diff --check
 
-      - name: 解析 PSScriptAnalyzer 最新版本
-        id: pssa
-        shell: pwsh
-        run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          $version = (Find-Module PSScriptAnalyzer -ErrorAction Stop).Version.ToString()
-          "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "PSScriptAnalyzer 最新版本：$version"
-
-      - name: 缓存 PSScriptAnalyzer 模块
-        uses: actions/cache@v4
-        with:
-          # 以 PSGallery 上的最新版本号作为 key：版本升级后 key 变化，自动重新安装。
-          path: ~/Documents/PowerShell/Modules
-          key: pssa-${{ runner.os }}-${{ steps.pssa.outputs.version }}
-
       - name: 验证 PowerShell 脚本
         shell: pwsh
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
-          # 命中缓存时模块已存在，跳过安装以免每次都从 PSGallery 拉取。
+          # 仅在模块缺失时安装：GitHub Windows runner 镜像已预装 PSScriptAnalyzer，
+          # 原实现无条件 Install-Module -Force 会每次重新下载（实测占该步骤约 17s）。
+          # 不用 actions/cache 缓存模块：镜像自带模块不落在 CurrentUser 模块目录，
+          # 缓存路径不存在（实测 Path Validation Error，缓存从不保存）。
           if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
             Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           }
