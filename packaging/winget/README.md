@@ -7,7 +7,7 @@ The seed manifest for the first stable package is under `manifests/l/lvxingqi/Fl
 To generate a manifest set for a future stable release on a Windows runner:
 
 ```powershell
-$hash = (Get-FileHash .\FluxLauncher-Setup.exe -Algorithm SHA256).Hash
+$hash = (Get-FileHash .\FluxLauncherCN-Setup.exe -Algorithm SHA256).Hash
 .\scripts\generate-winget-manifest.ps1 `
   -Version 0.1.0 `
   -InstallerSha256 $hash
@@ -19,7 +19,7 @@ Before opening a pull request, validate the directory with `winget validate --ma
 
 The `Submit stable release to WinGet` workflow listens for GitHub `release.published` and `release.edited` events. It runs for a newly published stable release, or when an existing release is promoted from `prerelease: true` to `prerelease: false`. Beta releases remain ignored. The workflow can also be started manually with a stable release tag for recovery or the first submission.
 
-The workflow downloads `FluxLauncher-Setup.exe` from the selected stable release, calculates the SHA256 instead of trusting release metadata, generates the three manifests, upgrades the Windows runner's App Installer when necessary, runs `winget validate`, pushes a versioned branch to `lvxingqi/winget-pkgs`, and opens or reuses an official pull request in `microsoft/winget-pkgs`. It exits without creating a duplicate when an official PR for the same branch already exists.
+The workflow downloads `FluxLauncherCN-Setup.exe` from the selected stable release, calculates the SHA256 instead of trusting release metadata, generates the three manifests, upgrades the Windows runner's App Installer when necessary, runs `winget validate`, pushes a versioned branch to `lvxingqi/winget-pkgs`, and opens or reuses an official pull request in `microsoft/winget-pkgs`. It exits without creating a duplicate when an official PR for the same branch already exists.
 
 Configure a dedicated GitHub Actions secret named `WINGET_GITHUB_TOKEN`. The token must be allowed to push branches to the `lvxingqi/winget-pkgs` fork and create pull requests against the public `microsoft/winget-pkgs` repository. Prefer a dedicated fine-grained token with only the required repository access, repository metadata read access, Contents read/write for the fork, and Pull requests read/write for PR creation. If the selected GitHub token type cannot grant those permissions to a public upstream PR, use a narrowly scoped classic token with `public_repo`; never use an account password or commit a token to the repository.
 
@@ -27,7 +27,7 @@ The first submission may require completing Microsoft's Contributor License Agre
 
 ## Release signing
 
-The stable release workflow can sign `FluxLauncher-Setup.exe`, `FluxLauncher-Portable.exe`, and the native fixture before publishing them. Signing is optional for beta workflow runs and required for stable workflow runs. Configure the following GitHub Actions secrets before dispatching a stable release:
+The stable release workflow can sign `FluxLauncherCN-Setup.exe`, `FluxLauncher-Portable.exe`, and the native fixture before publishing them. Signing is optional for beta workflow runs and required for stable workflow runs. Configure the following GitHub Actions secrets before dispatching a stable release:
 
 | Name | Purpose |
 | --- | --- |

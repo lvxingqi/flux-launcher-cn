@@ -27,7 +27,7 @@ $installRoot = Join-Path $workRoot "updated-install"
 $tracePath = Join-Path $workRoot "update-trace.log"
 $transitionPath = Join-Path $workRoot "first-release-requested.marker"
 $serverScript = Join-Path $PSScriptRoot "update-fixture-server.ps1"
-$fixtureInstaller = Join-Path $fixtureRoot "FluxLauncher-Setup.exe"
+$fixtureInstaller = Join-Path $fixtureRoot "FluxLauncherCN-Setup.exe"
 $firstReleasePath = Join-Path $fixtureRoot "latest.json"
 $stableReleasePath = Join-Path $fixtureRoot "latest-done.json"
 $server = $null
@@ -137,7 +137,10 @@ if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyCon
 # $CurrentVersion 只在脚本顶层使用，PSSA 的 PSReviewUnusedParameter 也仅在
 # 顶层统计引用，因此这里直接推导合成 release tag，不再包一层函数。
 $normalizedCurrentVersion = $CurrentVersion.Trim().TrimStart('v')
-$parsedCurrentVersion = [version]::Parse($normalizedCurrentVersion)
+# 当前版本可能携带 SemVer 预发布标识（如 0.3.0-beta.1）；.NET [version] 不接受，
+# 合成夹具版本只依赖数字核心（Major.Minor.Build+1），先剥掉后缀再解析。
+$numericCurrentVersion = $normalizedCurrentVersion -replace '-.*$', ''
+$parsedCurrentVersion = [version]::Parse($numericCurrentVersion)
 $syntheticLatestTag = "v{0}.{1}.{2}" -f $parsedCurrentVersion.Major, $parsedCurrentVersion.Minor, ($parsedCurrentVersion.Build + 1)
 $currentStableTag = "v$normalizedCurrentVersion"
 
@@ -147,8 +150,8 @@ Write-JsonFile -Path $firstReleasePath -Value @{
     draft = $false
     prerelease = $false
     assets = @(@{
-        name = "FluxLauncher-Setup.exe"
-        browser_download_url = "${prefix}FluxLauncher-Setup.exe"
+        name = "FluxLauncherCN-Setup.exe"
+        browser_download_url = "${prefix}FluxLauncherCN-Setup.exe"
         digest = "sha256:$installerHash"
     })
 }
@@ -156,7 +159,10 @@ Write-JsonFile -Path $stableReleasePath -Value @{
     tag_name = $currentStableTag
     html_url = "https://example.test/releases/tag/$currentStableTag"
     draft = $false
-    prerelease = $false
+    # 当前版本自身携带预发布标识时，夹具如实标记为 prerelease：稳定更新器
+    # 必须忽略它（不变量：beta release 不得触发稳定更新）；纯数字版本保持
+    # 原有的「同版本不算更新」路径。
+    prerelease = ($normalizedCurrentVersion -ne $numericCurrentVersion)
     assets = @()
 }
 

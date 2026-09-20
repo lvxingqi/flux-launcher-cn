@@ -19,7 +19,7 @@ if ($Files -and $Files.Count -gt 0) {
 elseif (-not [string]::IsNullOrWhiteSpace($ArtifactDirectory)) {
     $artifactPath = (Resolve-Path $ArtifactDirectory).Path
     $signableFiles = @(
-        (Join-Path $artifactPath "FluxLauncher-Setup.exe"),
+        (Join-Path $artifactPath "FluxLauncherCN-Setup.exe"),
         (Join-Path $artifactPath "FluxLauncher-Portable.exe")
     ) | Where-Object { Test-Path $_ }
 }

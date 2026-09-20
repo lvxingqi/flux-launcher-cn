@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/lvxingqi/flux-launcher-cn/releases/latest";
-const INSTALLER_ASSET_NAME: &str = "FluxLauncher-Setup.exe";
+const INSTALLER_ASSET_NAME: &str = "FluxLauncherCN-Setup.exe";
 const USER_AGENT: &str = "FluxLauncher-Updater";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -310,7 +310,7 @@ mod tests {
 
     fn release_payload(tag_name: &str, prerelease: bool) -> String {
         format!(
-            r#"{{"tag_name":"{tag_name}","html_url":"https://github.com/lvxingqi/flux-launcher-cn/releases/tag/{tag_name}","draft":false,"prerelease":{prerelease},"assets":[{{"name":"FluxLauncher-Setup.exe","browser_download_url":"https://example.test/FluxLauncher-Setup.exe","digest":"sha256:abc"}}]}}"#
+            r#"{{"tag_name":"{tag_name}","html_url":"https://github.com/lvxingqi/flux-launcher-cn/releases/tag/{tag_name}","draft":false,"prerelease":{prerelease},"assets":[{{"name":"FluxLauncherCN-Setup.exe","browser_download_url":"https://example.test/FluxLauncherCN-Setup.exe","digest":"sha256:abc"}}]}}"#
         )
     }
 
@@ -398,7 +398,7 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(2));
             }
         });
-        (format!("http://{address}/FluxLauncher-Setup.exe"), handle)
+        (format!("http://{address}/FluxLauncherCN-Setup.exe"), handle)
     }
 
     fn test_update(installer_url: String, checksum: String) -> StableUpdate {

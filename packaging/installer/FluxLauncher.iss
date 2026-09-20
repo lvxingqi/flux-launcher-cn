@@ -1,5 +1,11 @@
 #ifndef AppVersion
+; AppVersion 必须是纯数字点分格式（Inno 的 AppVersion/VersionInfoVersion 要求）；
+; beta 预发布标识在 DisplayVersion 中体现。
 #define AppVersion "0.2.0"
+#endif
+#ifndef DisplayVersion
+; 完整显示版本，可含 SemVer 预发布标识（如 0.2.0-beta.1）；由 build-installer.ps1 传入。
+#define DisplayVersion "0.2.0-beta.1"
 #endif
 #ifndef BuildDir
 #define BuildDir "target\x86_64-pc-windows-msvc\release"
@@ -15,7 +21,7 @@
 AppId={{03BBAE09-3528-4CD6-A941-5553ABD33A6C}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppVerName={#AppName} {#AppVersion}
+AppVerName={#AppName} {#DisplayVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
@@ -30,7 +36,7 @@ CloseApplications=yes
 RestartApplications=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64
-OutputBaseFilename=FluxLauncher-Setup
+OutputBaseFilename=FluxLauncherCN-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

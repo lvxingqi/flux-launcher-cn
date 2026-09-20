@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe">Download</a>
+  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe">Download</a>
   · <a href="#features">Features</a>
   · <a href="#usage">Usage</a>
   · <a href="#performance">Performance</a>
@@ -45,7 +45,7 @@ Flux is designed for users who want a fast, keyboard-first Windows launcher with
 
 ## Install
 
-For most users, install Flux Launcher CN with the [latest Windows 11 installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe). The installer is the recommended option, registers Flux in Windows startup with **Start Flux Launcher CN automatically with Windows** enabled by default, and adds a Start Menu shortcut. The same setting can be changed later in `Settings > General > Windows startup`.
+For most users, install Flux Launcher CN with the [latest Windows 11 installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe). The installer is the recommended option, registers Flux in Windows startup with **Start Flux Launcher CN automatically with Windows** enabled by default, and adds a Start Menu shortcut. The same setting can be changed later in `Settings > General > Windows startup`.
 
 You can also install or upgrade Flux with WinGet:
 
@@ -163,7 +163,7 @@ The Windows CI workflow additionally runs formatting, Clippy with warnings denie
 
 Windows releases run through the manual `Windows 发布` (Windows Release) workflow, and the `release_channel` input selects the channel.
 
-Beta releases are intended for testing: they use `release_channel=beta` and the GitHub Release is marked as prerelease. Flux Launcher CN's stable updater never consumes beta/prerelease builds, and beta versions are never submitted to WinGet.
+Beta releases are intended for testing: they use `release_channel=beta` and the GitHub Release is marked as prerelease. Beta versions use a SemVer prerelease identifier (for example `v0.2.0-beta.1`, incrementing `beta.N` for repeated fixes of the same version); the stable updater never consumes beta/prerelease builds, and beta versions are never submitted to WinGet.
 
 Stable releases use `release_channel=stable` and are created only when a stable release is explicitly requested. A stable release must correspond to a non-draft, non-prerelease GitHub Release, and its installer and checksum information can then be used for the WinGet submission.
 
@@ -181,7 +181,7 @@ The release workflow signs stable Windows artifacts only when the encrypted `WIN
 
 ## Project status
 
-Flux Launcher CN is actively developed. The `main` branch may contain improvements that have not yet been packaged into a stable release. Download the [latest installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe), or follow development in the [issue tracker](https://github.com/lvxingqi/flux-launcher-cn/issues).
+Flux Launcher CN is actively developed. The `main` branch may contain improvements that have not yet been packaged into a stable release. Download the [latest installer](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe), or follow development in the [issue tracker](https://github.com/lvxingqi/flux-launcher-cn/issues).
 
 ## Support
 

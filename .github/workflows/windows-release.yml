@@ -62,6 +62,7 @@ jobs:
         env:
           # 自由文本输入通过环境变量传入，避免反引号、引号或 $ 改变 PowerShell 解析结果。
           RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
         run: |
           $cargoVersion = cargo metadata --no-deps --format-version 1 |
             ConvertFrom-Json |
@@ -75,17 +76,27 @@ jobs:
 
           $releaseTag = $env:RELEASE_TAG
 
-          if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
-            throw "Release 标签必须符合 vX.Y.Z 格式，实际为 '$releaseTag'。"
+          # 稳定版必须是纯数字版本；beta 使用 SemVer 预发布标识（vX.Y.Z-beta.N）。
+          if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?(-beta\.\d+)?$') {
+            throw "Release 标签必须符合 vX.Y.Z 或 vX.Y.Z-beta.N 格式，实际为 '$releaseTag'。"
           }
 
           $tagVersion = $releaseTag.TrimStart("v")
 
+          # Cargo 版本与 tag 版本（含预发布标识）必须逐字一致。
           if ($cargoVersion -ne $tagVersion) {
             throw "版本不一致：Cargo=$cargoVersion，release_tag=$tagVersion。"
           }
 
+          if ($releaseChannel -eq 'stable' -and $tagVersion -match '-') {
+            throw "稳定版发布不允许预发布版本号：release_tag=$tagVersion。"
+          }
+
+          # Inno 的 AppVersion/VersionInfoVersion 只接受纯数字点分格式，
+          # 预发布标识单独导出，用于 AppVerName 显示与更新器冒烟的当前版本。
+          $installerVersion = $tagVersion -replace '-.*$', ''
           "APP_VERSION=$cargoVersion" >> $env:GITHUB_ENV
+          "APP_INSTALLER_VERSION=$installerVersion" >> $env:GITHUB_ENV
           Write-Host "应用版本：$cargoVersion"
 
       - name: 安装 Inno Setup
@@ -214,7 +225,8 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/build-installer.ps1 `
-            -AppVersion "$env:APP_VERSION" `
+            -AppVersion "$env:APP_INSTALLER_VERSION" `
+            -DisplayVersion "$env:APP_VERSION" `
             -OutputDirectory ./artifacts/windows-ui-release/package
 
           Get-ChildItem `
@@ -240,7 +252,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/installer-smoke.ps1 `
-            -Installer ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe `
+            -Installer ./artifacts/windows-ui-release/package/FluxLauncherCN-Setup.exe `
             -ExpectedExe ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
             -WorkDirectory ./artifacts/windows-ui-release/installer-smoke
 
@@ -249,7 +261,7 @@ jobs:
         run: |
           ./scripts/update-smoke.ps1 `
             -Executable ./target/x86_64-pc-windows-msvc/release/flux-launcher.exe `
-            -Installer ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe `
+            -Installer ./artifacts/windows-ui-release/package/FluxLauncherCN-Setup.exe `
             -WorkDirectory ./artifacts/windows-ui-release/update-smoke `
             -CurrentVersion "$env:APP_VERSION"
 
@@ -287,7 +299,7 @@ jobs:
 
             ## 下载
 
-            - [安装程序](https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/FluxLauncher-Setup.exe)
+            - [安装程序](https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/FluxLauncherCN-Setup.exe)
             - [便携版](https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/FluxLauncher-Portable.exe)
 
             ## Windows 验证
@@ -298,5 +310,5 @@ jobs:
             安装程序为主要下载项，便携版为次要下载项。
 
           files: |
-            ./artifacts/windows-ui-release/package/FluxLauncher-Setup.exe
+            ./artifacts/windows-ui-release/package/FluxLauncherCN-Setup.exe
             ./artifacts/windows-ui-release/package/FluxLauncher-Portable.exe

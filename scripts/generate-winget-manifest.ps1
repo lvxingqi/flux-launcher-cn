@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
 $packageIdentifier = "lvxingqi.FluxLauncherCN"
 $publisher = "lvxingqi"
 $packageDirectory = Join-Path $repoRoot (Join-Path $OutputRoot (Join-Path "l/lvxingqi/FluxLauncherCN" $Version))
-$installerUrl = "https://github.com/lvxingqi/flux-launcher-cn/releases/download/$ReleaseTag/FluxLauncher-Setup.exe"
+$installerUrl = "https://github.com/lvxingqi/flux-launcher-cn/releases/download/$ReleaseTag/FluxLauncherCN-Setup.exe"
 $releaseUrl = "https://github.com/lvxingqi/flux-launcher-cn/releases/tag/$ReleaseTag"
 $schemaBase = "https://aka.ms/winget-manifest"
 

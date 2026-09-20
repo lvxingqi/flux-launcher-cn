@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe">下载</a>
+  <a href="https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe">下载</a>
   · <a href="#功能特性">功能特性</a>
   · <a href="#使用方法">使用方法</a>
   · <a href="#性能">性能</a>
@@ -46,7 +46,7 @@ Flux Launcher CN 面向希望拥有一款快速、键盘优先、外观原生、
 
 ## 安装
 
-对于大多数用户，推荐使用[最新的 Windows 11 安装程序](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe)安装 Flux Launcher CN。安装程序是推荐选项，会默认勾选 **Start Flux Launcher automatically with Windows**（随 Windows 自动启动 Flux Launcher CN）并创建开始菜单快捷方式。该设置之后可在 `Settings > General > Windows startup` 中更改。
+对于大多数用户，推荐使用[最新的 Windows 11 安装程序](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe)安装 Flux Launcher CN。安装程序是推荐选项，会默认勾选 **Start Flux Launcher automatically with Windows**（随 Windows 自动启动 Flux Launcher CN）并创建开始菜单快捷方式。该设置之后可在 `Settings > General > Windows startup` 中更改。
 
 也可以通过 WinGet 安装或升级 Flux Launcher CN：
 
@@ -167,7 +167,7 @@ Windows CI 工作流还会运行格式化、Clippy（警告视为错误）、wor
 
 Windows 发布统一通过 `Windows 发布` 工作流执行，并通过 `release_channel` 区分发布通道。
 
-Beta 发布用于测试，使用 `release_channel=beta`，GitHub Release 标记为 prerelease。Flux Launcher CN 稳定版更新器不会消费 beta/prerelease 版本，Beta 版本也不会提交到 WinGet。
+Beta 发布用于测试，使用 `release_channel=beta`，GitHub Release 标记为 prerelease。beta 版本号使用 SemVer 预发布标识（如 `v0.2.0-beta.1`，同一版本反复修复时递增 `beta.N`）；稳定版更新器不会消费 beta/prerelease 版本，beta 版本也不会提交到 WinGet。
 
 稳定版发布使用 `release_channel=stable`，仅在明确执行稳定版发布时创建。稳定版必须对应非 draft、非 prerelease 的 GitHub Release，稳定版安装程序及其校验信息随后可用于 WinGet 提交。
 
@@ -191,7 +191,7 @@ WinGet 仅针对稳定版 GitHub Release，不使用 beta/prerelease，也不使
 
 ## 项目状态
 
-Flux Launcher CN 正在积极开发中。`main` 分支可能包含尚未打包到稳定版中的改进。下载[最新的安装程序](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncher-Setup.exe)，或在 [issue 跟踪器](https://github.com/lvxingqi/flux-launcher-cn/issues)中关注开发进展。
+Flux Launcher CN 正在积极开发中。`main` 分支可能包含尚未打包到稳定版中的改进。下载[最新的安装程序](https://github.com/lvxingqi/flux-launcher-cn/releases/latest/download/FluxLauncherCN-Setup.exe)，或在 [issue 跟踪器](https://github.com/lvxingqi/flux-launcher-cn/issues)中关注开发进展。
 
 ## 许可证
 

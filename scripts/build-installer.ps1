@@ -1,7 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
+    # 纯数字点分版本（Inno 的 AppVersion/VersionInfoVersion 要求，如 0.3.0）。
     [string]$AppVersion,
+    # 完整显示版本，可含 SemVer 预发布标识（如 0.3.0-beta.1）；缺省回退为 AppVersion。
+    [string]$DisplayVersion,
     [string]$BuildDir = "target/x86_64-pc-windows-msvc/release",
     [string]$OutputDirectory = "artifacts/FluxLauncher-Windows11-x64",
     [string]$InstallDirectory,
@@ -13,7 +16,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $buildPath = (Resolve-Path (Join-Path $repoRoot $BuildDir)).Path
 $outputPath = Join-Path $repoRoot $OutputDirectory
 $portableName = "FluxLauncher-Portable.exe"
-$installerName = "FluxLauncher-Setup.exe"
+$installerName = "FluxLauncherCN-Setup.exe"
 $requestedInnoCompiler = $InnoCompiler
 
 if ($InnoCompiler) {
@@ -44,7 +47,10 @@ if (-not (Test-Path $launcher)) {
 }
 
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
-& $InnoCompiler "/DAppVersion=$AppVersion" "/DBuildDir=$buildPath" (Join-Path $repoRoot "packaging/installer/FluxLauncher.iss")
+if (-not $DisplayVersion) {
+    $DisplayVersion = $AppVersion
+}
+& $InnoCompiler "/DAppVersion=$AppVersion" "/DDisplayVersion=$DisplayVersion" "/DBuildDir=$buildPath" (Join-Path $repoRoot "packaging/installer/FluxLauncher.iss")
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compiler exited with code $LASTEXITCODE"
 }

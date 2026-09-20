@@ -151,15 +151,15 @@ jobs:
             ConvertFrom-Json
 
           $installer = $release.assets |
-            Where-Object { $_.name -eq "FluxLauncher-Setup.exe" } |
+            Where-Object { $_.name -eq "FluxLauncherCN-Setup.exe" } |
             Select-Object -First 1
 
           if (-not $installer) {
-            throw "稳定版 Release $tag 不包含 FluxLauncher-Setup.exe。"
+            throw "稳定版 Release $tag 不包含 FluxLauncherCN-Setup.exe。"
           }
 
           $url = $installer.url
-          $path = Join-Path $env:RUNNER_TEMP "FluxLauncher-Setup.exe"
+          $path = Join-Path $env:RUNNER_TEMP "FluxLauncherCN-Setup.exe"
 
           Invoke-WebRequest -Uri $url -OutFile $path
 
