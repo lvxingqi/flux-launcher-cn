@@ -425,6 +425,7 @@ gh workflow run windows-release.yml \
 * 新增 workflow 输入须同步默认值、调用方与文档；不得留下只在 CI 中可用而无法本地复现的开关。
 * CI 目标平台即为本地检查目标平台，二者必须一致，不得要求本地执行 CI 无法执行的检查。
 * workflow 的运行时长必须可控：能用缓存消除的冷编译必须用缓存（如 `Swatinem/rust-cache`，缓存 key 与其它 workflow 区分），不得重复执行同 HEAD 已由其它 workflow 完成的全量检查；确需同 HEAD 验证结论时改为校验该 workflow 的成功记录，而不是重跑。发布类 workflow 成功运行超过 15 分钟须在计划回写中说明原因或给出优化（发现方式：Actions 运行列表直接显示每次 run 的时长）。
+* 构建配置（profile、lto、rustflags 等）变更会使既有缓存产物失效，而缓存 key（rust-cache 的 key 由 Cargo.lock 与 rustc 版本派生）不会自动变化，且 GitHub 缓存同 key 不可覆盖：此时必须同步更换缓存 key（如在其中编码 profile 身份），否则旧缓存永远无法替换，导致每次全量重编。发现方式：构建步骤日志的 `Compiling` 计数与缓存 restore / save 判定行。
 * workflow 引用的 secrets / vars 名称必须维持在允许清单内，并由 `scripts/validate-workflow-secret-references.ps1` 在 CI 校验；新增、改名或删除密钥时必须同步该脚本的清单与第 20 节。
 * 编辑器提示 “Context access might be invalid: NAME” 属预期：本仓库按需配置密钥，workflow 在运行时自行守卫（无提交凭据时 fail-fast、签名仅限稳定通道），因此不得为了消除提示而创建空密钥或伪造变量。
 
