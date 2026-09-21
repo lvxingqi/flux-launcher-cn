@@ -20,6 +20,40 @@ use flux_core::{ResultKind, SearchResult};
 use crate::applications::canonical_application_id;
 use windui::prelude::{signal, Sender, Signal};
 
+/// Everything 自动启用检测的后台结果槽。
+///
+/// windui 的 `Signal` 只能在 UI 线程读写，而 Everything 检测（注册表扫描、
+/// `tasklist` 进程枚举、IPC 连接）可能阻塞数百毫秒以上，不能在复选框回调里
+/// 同步执行。后台线程把结果写入本槽，UI 线程在既有 `on_interval` 轮询中取走
+/// 并更新信号，保证复选框点击立即有视觉反馈。
+#[derive(Default)]
+pub(crate) struct EverythingDetectionSlot {
+    running: AtomicBool,
+    result: Mutex<Option<Result<EverythingStartup, String>>>,
+}
+
+impl EverythingDetectionSlot {
+    /// 在后台线程启动一次检测；已有检测在跑时忽略重复请求。
+    pub(crate) fn spawn_detection(self: &Arc<Self>) {
+        if self.running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let slot = Arc::clone(self);
+        thread::spawn(move || {
+            let result = start_background_if_installed();
+            if let Ok(mut pending) = slot.result.lock() {
+                *pending = Some(result);
+            }
+            slot.running.store(false, Ordering::SeqCst);
+        });
+    }
+
+    /// UI 线程取走已完成的检测结果（若有）；重复取返回 `None`。
+    pub(crate) fn take_result(&self) -> Option<Result<EverythingStartup, String>> {
+        self.result.lock().ok()?.take()
+    }
+}
+
 /// 低成本刷新 Everything 状态文本：注册表读取（约 0ms）+ IPC 探测（约 3-5ms），
 /// 不枚举进程、也不拉起 Everything，可安全用于窗口激活与设置保存等 UI 线程路径。
 ///
@@ -572,8 +606,11 @@ fn join_everything_path(folder: &str, filename: &str) -> String {
 mod tests {
     use super::{
         join_everything_path, should_start_everything, startup_args, winget_install_args,
-        WINGET_PACKAGE_ID,
+        EverythingDetectionSlot, WINGET_PACKAGE_ID,
     };
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn startup_uses_official_background_option() {
@@ -596,6 +633,45 @@ mod tests {
     #[test]
     fn does_not_start_when_everything_process_is_already_running() {
         assert!(!should_start_everything(false, true));
+    }
+
+    #[test]
+    fn detection_slot_delivers_result_exactly_once() {
+        let slot = Arc::new(EverythingDetectionSlot::default());
+        assert!(slot.take_result().is_none());
+
+        // 冒烟环境变量让检测在无 Everything 的机器上确定性地返回 Installed。
+        std::env::set_var("FLUX_SMOKE_EVERYTHING_INSTALLED", "1");
+        slot.spawn_detection();
+        let mut delivered = None;
+        for _ in 0..300 {
+            if let Some(result) = slot.take_result() {
+                delivered = Some(result);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        std::env::remove_var("FLUX_SMOKE_EVERYTHING_INSTALLED");
+
+        // 槽的不变量是「结果恰好投递一次」。Ok/Err 取决于当前机器能否真的拉起
+        // Everything：冒烟钩子只保证注册表状态为「已安装」，在没有任何
+        // Everything.exe 的机器（如 CI runner）上后台拉起会失败并返回 Err，
+        // 因此这里不断言 Ok/Err，只在 Ok 时校验安装状态。
+        let delivered = delivered.expect("detection result was not delivered within 3s");
+        if let Ok(outcome) = &delivered {
+            assert!(outcome.is_installed());
+        }
+        assert!(slot.take_result().is_none());
+    }
+
+    #[test]
+    fn duplicate_spawn_requests_are_ignored_while_running() {
+        let slot = Arc::new(EverythingDetectionSlot::default());
+        // 直接置位运行标记，验证重复 spawn 不产生第二个结果。
+        slot.running.store(true, Ordering::SeqCst);
+        slot.spawn_detection();
+        assert!(slot.take_result().is_none());
+        slot.running.store(false, Ordering::SeqCst);
     }
 
     #[test]

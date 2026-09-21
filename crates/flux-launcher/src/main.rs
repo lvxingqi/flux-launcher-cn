@@ -205,7 +205,7 @@ struct LauncherState {
     clear_query_on_activation: Signal<bool>,
     start_with_windows: Signal<bool>,
     auto_enable_everything: Signal<bool>,
-    everything_detection: Arc<settings_view::EverythingDetectionSlot>,
+    everything_detection: Arc<everything::EverythingDetectionSlot>,
     update_checks_enabled: Signal<bool>,
     update_interval_hours: Signal<String>,
     auto_install_updates: Signal<bool>,
@@ -290,7 +290,7 @@ fn init_launcher_state(
     let clear_query_on_activation = signal(settings.clear_query_on_activation);
     let start_with_windows = signal(settings.start_with_windows);
     let auto_enable_everything = signal(settings.auto_enable_everything);
-    let everything_detection = Arc::new(crate::settings_view::EverythingDetectionSlot::default());
+    let everything_detection = Arc::new(everything::EverythingDetectionSlot::default());
     let update_checks_enabled = signal(settings.update_checks_enabled);
     let update_interval_hours = signal(settings.update_interval_hours.to_string());
     let auto_install_updates = signal(settings.auto_install_updates);
