@@ -1,9 +1,8 @@
 use super::{
-    dimension_from_slider, dimension_slider_fraction, history_cursor_step,
-    launcher_window_geometry_with_sizes, parse_dimension_input,
-    should_publish_initial_query_results, should_show_launcher, COMPACT_WINDOW_HEIGHT,
-    LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT,
-    MIN_LAUNCHER_WIDTH,
+    dimension_slider_fraction, history_cursor_step, launcher_window_geometry_with_sizes,
+    parse_dimension_input, should_publish_initial_query_results, should_show_launcher,
+    COMPACT_WINDOW_HEIGHT, LAUNCHER_FONT_FAMILY, MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH,
+    MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
 use crate::actions::{actions_for_result, quoted_result_path};
 use crate::applications::{canonical_application_id, resolve_bare_executable_path};
@@ -24,6 +23,7 @@ use crate::result_row::hover_position_changed;
 use crate::ui_helpers::display_title;
 use crate::update_state::{format_bytes, format_update_progress};
 use crate::updater::relaunch_mode_for_auto_install;
+use crate::window_state::{dimension_from_slider, launcher_window_geometry_with_prompt};
 use crate::window_state::{launcher_window_geometry, should_show_everything_install_prompt};
 use flux_core::{rank_results_with_priorities, ResultKind, ResultSource, SearchResult};
 use flux_core::{DEFAULT_LAUNCHER_HEIGHT, DEFAULT_LAUNCHER_WIDTH};
@@ -751,14 +751,14 @@ fn query_cleanup_keeps_open_settings_at_full_geometry() {
 #[test]
 fn missing_everything_prompt_uses_visible_dialog_geometry() {
     assert_eq!(
-        super::launcher_window_geometry_with_prompt(false, true, false, 420, 382),
+        launcher_window_geometry_with_prompt(false, true, false, 420, 382),
         (
             super::EVERYTHING_PROMPT_WINDOW_WIDTH,
             super::EVERYTHING_PROMPT_WINDOW_HEIGHT
         )
     );
     assert_eq!(
-        super::launcher_window_geometry_with_prompt(true, true, false, 420, 382),
+        launcher_window_geometry_with_prompt(true, true, false, 420, 382),
         (super::SETTINGS_WINDOW_WIDTH, super::SETTINGS_WINDOW_HEIGHT)
     );
 }
@@ -766,11 +766,11 @@ fn missing_everything_prompt_uses_visible_dialog_geometry() {
 #[test]
 fn missing_everything_prompt_does_not_override_normal_launcher_geometry() {
     assert_eq!(
-        super::launcher_window_geometry_with_prompt(false, false, true, 640, 520),
+        launcher_window_geometry_with_prompt(false, false, true, 640, 520),
         (640, 520)
     );
     assert_eq!(
-        super::launcher_window_geometry_with_prompt(false, false, false, 640, 520),
+        launcher_window_geometry_with_prompt(false, false, false, 640, 520),
         (640, COMPACT_WINDOW_HEIGHT)
     );
 }
