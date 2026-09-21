@@ -616,7 +616,135 @@ pub(crate) struct SettingsPanelContext {
     pub(crate) window_size: WindowSizeHandle,
 }
 
-/// 构建 Settings 面板：Acrylic 外壳 + 各 Tab 内容 + Apply/Back 接线。
+/// Back/Cancel 时把已保存设置还原到各 UI 信号的信号集合。
+///
+/// windui 的 `Signal` 是 Copy 句柄，构造时按字段直拷即可；`I18nHub`、
+/// `HotkeyHandle` 为 Clone。还原逻辑集中在 [`restore_saved_settings`]，
+/// `main.rs` 的 cancel 闭包只负责读取共享设置并调用本函数，再处理窗口几何。
+pub(crate) struct SettingsRestoreSignals {
+    pub(crate) settings_visible: Signal<bool>,
+    pub(crate) language_preference: Signal<usize>,
+    pub(crate) i18n_hub: I18nHub,
+    pub(crate) activation_key: Signal<String>,
+    pub(crate) activation_ctrl: Signal<bool>,
+    pub(crate) activation_alt: Signal<bool>,
+    pub(crate) activation_shift: Signal<bool>,
+    pub(crate) activation_meta: Signal<bool>,
+    pub(crate) activation_display: Signal<String>,
+    pub(crate) activation_recording: Signal<bool>,
+    pub(crate) activation_handle: HotkeyHandle,
+    pub(crate) ignore_fullscreen: Signal<bool>,
+    pub(crate) game_mode: Signal<bool>,
+    pub(crate) game_mode_status: Signal<String>,
+    pub(crate) smooth_caret: Signal<bool>,
+    pub(crate) switch_to_english_layout: Signal<bool>,
+    pub(crate) use_system_accent: Signal<bool>,
+    pub(crate) custom_selection_color: Signal<String>,
+    pub(crate) selection_color: Signal<Color>,
+    pub(crate) launcher_width: Signal<u16>,
+    pub(crate) launcher_height: Signal<u16>,
+    pub(crate) launcher_width_input: Signal<String>,
+    pub(crate) launcher_height_input: Signal<String>,
+    pub(crate) launcher_width_slider: Signal<f32>,
+    pub(crate) launcher_height_slider: Signal<f32>,
+    pub(crate) launcher_preview_text: Signal<String>,
+    pub(crate) clear_query_on_activation: Signal<bool>,
+    pub(crate) start_with_windows: Signal<bool>,
+    pub(crate) auto_enable_everything: Signal<bool>,
+    pub(crate) update_checks_enabled: Signal<bool>,
+    pub(crate) update_interval_hours: Signal<String>,
+    pub(crate) auto_install_updates: Signal<bool>,
+    pub(crate) obsidian_enabled: Signal<bool>,
+    pub(crate) obsidian_alias: Signal<String>,
+    pub(crate) google_enabled: Signal<bool>,
+    pub(crate) google_alias: Signal<String>,
+    pub(crate) system_commands_enabled: Signal<bool>,
+    pub(crate) monitor_preference: Signal<usize>,
+    pub(crate) everything_installed: Signal<bool>,
+    pub(crate) everything_status: Signal<String>,
+}
+
+/// 按已保存设置还原全部设置页 UI 信号（不含窗口几何，几何由调用方处理）。
+pub(crate) fn restore_saved_settings(saved: &Settings, s: &SettingsRestoreSignals) {
+    s.settings_visible.set(false);
+    s.language_preference
+        .set(crate::i18n::language_preference_index(saved.language));
+    apply_configured_locale(saved.language);
+    s.i18n_hub.refresh();
+
+    s.activation_key.set(saved.activation_hotkey.key.clone());
+    s.activation_ctrl.set(saved.activation_hotkey.ctrl);
+    s.activation_alt.set(saved.activation_hotkey.alt);
+    s.activation_shift.set(saved.activation_hotkey.shift);
+    s.activation_meta.set(saved.activation_hotkey.meta);
+    s.activation_display
+        .set(hotkeys::display_config(&saved.activation_hotkey));
+    s.activation_recording.set(false);
+    s.activation_handle
+        .set(hotkeys::activation_hotkey(&saved.activation_hotkey));
+    s.activation_handle.set_enabled(true);
+
+    s.ignore_fullscreen.set(saved.ignore_hotkeys_in_fullscreen);
+    s.game_mode.set(saved.game_mode);
+    s.game_mode_status.set(game_mode_label(saved.game_mode));
+    s.smooth_caret.set(saved.smooth_caret);
+    s.switch_to_english_layout
+        .set(saved.switch_to_english_layout);
+    s.use_system_accent.set(saved.use_system_accent);
+    s.custom_selection_color
+        .set(selection_color_hex(saved.custom_selection_color));
+    s.selection_color.set(selection_color_for_settings(saved));
+
+    s.launcher_width.set(saved.launcher_width);
+    s.launcher_height.set(saved.launcher_height);
+    s.launcher_width_input.set(saved.launcher_width.to_string());
+    s.launcher_height_input
+        .set(saved.launcher_height.to_string());
+    s.launcher_width_slider.set(dimension_slider_fraction(
+        saved.launcher_width,
+        MIN_LAUNCHER_WIDTH,
+        MAX_LAUNCHER_WIDTH,
+    ));
+    s.launcher_height_slider.set(dimension_slider_fraction(
+        saved.launcher_height,
+        MIN_LAUNCHER_HEIGHT,
+        MAX_LAUNCHER_HEIGHT,
+    ));
+    s.launcher_preview_text.set(
+        t!(
+            "settings.visual.client_area",
+            width = saved.launcher_width,
+            height = saved.launcher_height
+        )
+        .into_owned(),
+    );
+
+    s.clear_query_on_activation
+        .set(saved.clear_query_on_activation);
+    s.start_with_windows.set(saved.start_with_windows);
+    s.auto_enable_everything.set(saved.auto_enable_everything);
+    s.update_checks_enabled.set(saved.update_checks_enabled);
+    s.update_interval_hours
+        .set(saved.update_interval_hours.to_string());
+    s.auto_install_updates.set(saved.auto_install_updates);
+    s.obsidian_enabled.set(saved.obsidian_enabled);
+    s.obsidian_alias.set(saved.obsidian_alias.clone());
+    s.google_enabled.set(saved.google_enabled);
+    s.google_alias.set(saved.google_alias.clone());
+    s.system_commands_enabled.set(saved.system_commands_enabled);
+    s.monitor_preference
+        .set(crate::window_state::monitor_preference_index(
+            saved.monitor_preference,
+        ));
+    // 设置变更（例如切换语言）后刷新状态文案；这里同样使用低成本刷新，
+    // 如实反映 Everything 当前的安装与 IPC 状态。
+    everything::refresh_everything_status_cheap(
+        s.auto_enable_everything,
+        s.everything_installed,
+        s.everything_status,
+    );
+}
+
 pub(crate) fn settings_panel(context: SettingsPanelContext) -> Element {
     let SettingsPanelContext {
         activation_alt,

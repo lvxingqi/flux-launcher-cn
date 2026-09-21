@@ -57,10 +57,7 @@ use flux_core::{
     should_suppress_activation, MonitorPreference, SearchModel, SearchResult, Settings,
     MAX_LAUNCHER_HEIGHT, MAX_LAUNCHER_WIDTH, MIN_LAUNCHER_HEIGHT, MIN_LAUNCHER_WIDTH,
 };
-use i18n::{
-    apply_configured_locale, apply_system_locale, configured_locale,
-    language_preference_from_index, language_preference_index, I18nHub,
-};
+use i18n::{apply_system_locale, configured_locale, language_preference_from_index, I18nHub};
 use interval_state::dispatch_query;
 #[cfg(test)]
 pub(crate) use keyboard::history_cursor_step;
@@ -77,9 +74,7 @@ use query::SearchRuntimeState;
 use result_row::result_row;
 use settings_state::{set_game_mode, LauncherSettingsState};
 use settings_view::SettingsUiState;
-use ui_helpers::{
-    action_bar_content, game_mode_label, launcher_theme, priorities_empty, selection_color_hex,
-};
+use ui_helpers::{action_bar_content, launcher_theme, priorities_empty, selection_color_hex};
 use update_state::{
     maybe_request_update_check, register_update_channels, request_update_check, update_check_due,
 };
@@ -1327,83 +1322,58 @@ fn main() {
     let everything_status_for_apply = everything_status;
     let cancel_settings = {
         let settings = Arc::clone(&shared_settings);
-        let activation_handle = activation_handle.clone();
         let i18n_hub = i18n_hub.clone();
+        let activation_handle = activation_handle.clone();
         let window_size = window_size.clone();
         let window_position = window_position.clone();
-
+        let restore = settings_view::SettingsRestoreSignals {
+            settings_visible,
+            language_preference,
+            i18n_hub,
+            activation_key,
+            activation_ctrl,
+            activation_alt,
+            activation_shift,
+            activation_meta,
+            activation_display,
+            activation_recording,
+            activation_handle,
+            ignore_fullscreen,
+            game_mode,
+            game_mode_status,
+            smooth_caret,
+            switch_to_english_layout,
+            use_system_accent,
+            custom_selection_color,
+            selection_color,
+            launcher_width,
+            launcher_height,
+            launcher_width_input,
+            launcher_height_input,
+            launcher_width_slider,
+            launcher_height_slider,
+            launcher_preview_text,
+            clear_query_on_activation,
+            start_with_windows,
+            auto_enable_everything,
+            update_checks_enabled,
+            update_interval_hours,
+            auto_install_updates,
+            obsidian_enabled,
+            obsidian_alias,
+            google_enabled,
+            google_alias,
+            system_commands_enabled,
+            monitor_preference,
+            everything_installed,
+            everything_status,
+        };
         Rc::new(move || {
             let Ok(saved) = settings.read() else {
                 return;
             };
             let saved = saved.clone();
-
-            settings_visible.set(false);
-            language_preference.set(language_preference_index(saved.language));
-            apply_configured_locale(saved.language);
-            i18n_hub.refresh();
-
-            activation_key.set(saved.activation_hotkey.key.clone());
-            activation_ctrl.set(saved.activation_hotkey.ctrl);
-            activation_alt.set(saved.activation_hotkey.alt);
-            activation_shift.set(saved.activation_hotkey.shift);
-            activation_meta.set(saved.activation_hotkey.meta);
-            activation_display.set(hotkeys::display_config(&saved.activation_hotkey));
-            activation_recording.set(false);
-            activation_handle.set(hotkeys::activation_hotkey(&saved.activation_hotkey));
-            activation_handle.set_enabled(true);
-
-            ignore_fullscreen.set(saved.ignore_hotkeys_in_fullscreen);
-            game_mode.set(saved.game_mode);
-            game_mode_status.set(game_mode_label(saved.game_mode));
-            smooth_caret.set(saved.smooth_caret);
-            switch_to_english_layout.set(saved.switch_to_english_layout);
-            use_system_accent.set(saved.use_system_accent);
-            custom_selection_color.set(selection_color_hex(saved.custom_selection_color));
-            selection_color.set(selection_color_for_settings(&saved));
-
-            launcher_width.set(saved.launcher_width);
-            launcher_height.set(saved.launcher_height);
-            launcher_width_input.set(saved.launcher_width.to_string());
-            launcher_height_input.set(saved.launcher_height.to_string());
-            launcher_width_slider.set(dimension_slider_fraction(
-                saved.launcher_width,
-                MIN_LAUNCHER_WIDTH,
-                MAX_LAUNCHER_WIDTH,
-            ));
-            launcher_height_slider.set(dimension_slider_fraction(
-                saved.launcher_height,
-                MIN_LAUNCHER_HEIGHT,
-                MAX_LAUNCHER_HEIGHT,
-            ));
-            launcher_preview_text.set(
-                t!(
-                    "settings.visual.client_area",
-                    width = saved.launcher_width,
-                    height = saved.launcher_height
-                )
-                .into_owned(),
-            );
-
-            clear_query_on_activation.set(saved.clear_query_on_activation);
-            start_with_windows.set(saved.start_with_windows);
-            auto_enable_everything.set(saved.auto_enable_everything);
-            update_checks_enabled.set(saved.update_checks_enabled);
-            update_interval_hours.set(saved.update_interval_hours.to_string());
-            auto_install_updates.set(saved.auto_install_updates);
-            obsidian_enabled.set(saved.obsidian_enabled);
-            obsidian_alias.set(saved.obsidian_alias.clone());
-            google_enabled.set(saved.google_enabled);
-            google_alias.set(saved.google_alias.clone());
-            system_commands_enabled.set(saved.system_commands_enabled);
-            monitor_preference.set(monitor_preference_index(saved.monitor_preference));
-            // 设置变更（例如切换语言）后刷新状态文案；这里同样使用低成本刷新，
-            // 如实反映 Everything 当前的安装与 IPC 状态。
-            refresh_everything_status_cheap(
-                auto_enable_everything,
-                everything_installed,
-                everything_status,
-            );
+            settings_view::restore_saved_settings(&saved, &restore);
 
             let target_height = if show_results.get() {
                 i32::from(saved.launcher_height)
