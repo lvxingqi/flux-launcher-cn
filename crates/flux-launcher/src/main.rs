@@ -32,6 +32,7 @@ mod result_row;
 mod settings_state;
 mod settings_view;
 mod startup;
+mod tray_menu;
 mod ui_helpers;
 mod update_state;
 mod updater;
@@ -87,11 +88,11 @@ use windui::render::Canvas;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const SINGLE_INSTANCE_ID: &str = "lvxingqi.flux-launcher-cn";
-const SETTINGS_WINDOW_WIDTH: i32 = 720;
+pub(crate) const SETTINGS_WINDOW_WIDTH: i32 = 720;
 const EVERYTHING_PROMPT_WINDOW_WIDTH: i32 = 440;
 const EVERYTHING_PROMPT_WINDOW_HEIGHT: i32 = 242;
 // The empty launcher is a compact search strip; the results state keeps the user-configured height.
-const COMPACT_WINDOW_HEIGHT: i32 = 56;
+pub(crate) const COMPACT_WINDOW_HEIGHT: i32 = 56;
 const VISUAL_SLIDER_WIDTH: i32 = 200;
 // The action group stays narrower than the minimum launcher content width so it
 // can be centered between the same left/right content insets at every size.
@@ -109,7 +110,7 @@ pub(crate) const RESULT_ROW_HEIGHT: i32 = 46;
 /// 把几十个 Everything 文件全部塞进唯一的图标提取线程。
 pub(crate) const EAGER_ICON_ROW_COUNT: usize =
     (RESULT_VIEWPORT_HEIGHT / RESULT_ROW_HEIGHT + 2) as usize;
-const SETTINGS_WINDOW_HEIGHT: i32 = 520;
+pub(crate) const SETTINGS_WINDOW_HEIGHT: i32 = 520;
 const LAUNCHER_FONT_FAMILY: &str = "Segoe UI Variable";
 const SEARCH_INTERVAL: Duration = Duration::from_millis(40);
 const EVERYTHING_MIN_QUERY_LEN: usize = 1;
@@ -950,102 +951,18 @@ fn main() {
         move |event: KeyEvent| main_key_input::handle_key_input(event, &keys)
     });
 
-    let settings_for_tray_toggle = Arc::clone(&shared_settings);
-    let game_mode_for_tray = game_mode;
-    let game_status_for_tray = game_mode_status;
-    let settings_visible_for_tray = settings_visible;
-    let settings_visible_for_left_click = settings_visible;
-    let show_results_for_left_click = show_results;
-    let size_for_left_click = window_size.clone();
-    let position_for_left_click = window_position.clone();
-    let settings_for_left_click = Arc::clone(&shared_settings);
-    let show_results_for_tray = show_results;
-    let size_for_tray = window_size.clone();
-    let position_for_tray = window_position.clone();
-    let settings_for_tray_position = Arc::clone(&shared_settings);
-    let size_for_settings = window_size.clone();
-    let position_for_settings = window_position.clone();
-    let settings_for_settings_position = Arc::clone(&shared_settings);
-    let tray = Tray::new()
-        .tooltip("Flux Launcher CN")
-        .icon_rgba(16, 16, &tray_icon())
-        .on_left_click(move |ctx| {
-            settings_visible_for_left_click.set(false);
-            let height = if show_results_for_left_click.get() {
-                launcher_height.get() as i32
-            } else {
-                COMPACT_WINDOW_HEIGHT
-            };
-            if let Ok(settings) = settings_for_left_click.read() {
-                request_monitor_position(
-                    &position_for_left_click,
-                    settings.monitor_preference,
-                    launcher_width.get() as i32,
-                    height,
-                );
-            }
-            size_for_left_click.set(launcher_width.get() as i32, height);
-            ctx.show_window();
-        })
-        .menu(vec![
-            TrayMenuItem::item(i18n_hub.tr(|| t!("tray.show").into_owned()), move |ctx| {
-                settings_visible_for_tray.set(false);
-                let height = if show_results_for_tray.get() {
-                    launcher_height.get() as i32
-                } else {
-                    COMPACT_WINDOW_HEIGHT
-                };
-                if let Ok(settings) = settings_for_tray_position.read() {
-                    request_monitor_position(
-                        &position_for_tray,
-                        settings.monitor_preference,
-                        launcher_width.get() as i32,
-                        height,
-                    );
-                }
-                size_for_tray.set(launcher_width.get() as i32, height);
-                ctx.show_window();
-            }),
-            TrayMenuItem::item(
-                i18n_hub.tr(|| t!("tray.settings").into_owned()),
-                move |ctx| {
-                    settings_visible.set(true);
-                    if let Ok(settings) = settings_for_settings_position.read() {
-                        request_monitor_position(
-                            &position_for_settings,
-                            settings.monitor_preference,
-                            SETTINGS_WINDOW_WIDTH,
-                            SETTINGS_WINDOW_HEIGHT,
-                        );
-                    }
-                    // Queue the Settings size before showing the hidden tray window. The
-                    // first frame must not use the compact 72-DIP launcher height.
-                    size_for_settings.set(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT);
-                    ctx.show_window();
-                    // Keep the request after show as well because the native show lifecycle
-                    // may consume a stale compact-size request from the previous hide.
-                    size_for_settings.set(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT);
-                },
-            ),
-            TrayMenuItem::separator(),
-            TrayMenuItem::check(
-                i18n_hub.tr(|| t!("tray.game_mode").into_owned()),
-                game_mode,
-                move |_| {
-                    let enabled = !game_mode_for_tray.get();
-                    set_game_mode(
-                        &settings_for_tray_toggle,
-                        game_mode_for_tray,
-                        game_status_for_tray,
-                        enabled,
-                    );
-                },
-            ),
-            TrayMenuItem::separator(),
-            TrayMenuItem::item(i18n_hub.tr(|| t!("tray.exit").into_owned()), |ctx| {
-                ctx.quit()
-            }),
-        ]);
+    let tray = tray_menu::build_tray(tray_menu::TrayContext {
+        i18n_hub: i18n_hub.clone(),
+        settings: Arc::clone(&shared_settings),
+        game_mode,
+        game_mode_status,
+        settings_visible,
+        show_results,
+        window_size: window_size.clone(),
+        window_position: window_position.clone(),
+        launcher_width,
+        launcher_height,
+    });
 
     let i18n_hub_for_apply = i18n_hub.clone();
     let settings_for_apply = Arc::clone(&shared_settings);
